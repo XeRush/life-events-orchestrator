@@ -1,4 +1,4 @@
-**Team Synphony**
+**Team Symphony**
 
 # LIFELOOP
 
@@ -14,7 +14,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 
-**Navigate:** [Architecture](docs/architecture.md) | [API](docs/api.md) | [Workflow engine](docs/workflow-engine.md) | [Voice agent](docs/voice-agent.md) | [Demo script](docs/demo-script.md) | [For judges](docs/judging.md) | [All docs](docs/README.md) | [Team](#team-synphony)
+**Navigate:** [Architecture](docs/architecture.md) | [API](docs/api.md) | [Workflow engine](docs/workflow-engine.md) | [Voice agent](docs/voice-agent.md) | [Demo script](docs/demo-script.md) | [For judges](docs/judging.md) | [All docs](docs/README.md) | [Team](#team-symphony)
 
 > **One event. One call. Every next step.**
 
@@ -145,7 +145,7 @@ More life events and authorities, real government APIs, UAE Pass / digital ident
 | Decision log | [docs/decisions.md](docs/decisions.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
-## Team Synphony
+## Team Symphony
 
 | Member | GitHub |
 |---|---|
