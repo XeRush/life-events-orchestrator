@@ -1,0 +1,73 @@
+# LIFELOOP - `docker compose up --build` starts PostgreSQL, the FastAPI backend (migrations + seed run on start) and the React frontend.
+# Configuration comes from .env (copy .env.example). Nothing else is required.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lifeloop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lifeloop}
+      POSTGRES_DB: lifeloop
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifeloop -d lifeloop"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lifeloop:${POSTGRES_PASSWORD:-lifeloop}@postgres:5432/lifeloop
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-dev-only-change-me}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_AGENT_ID: ${ELEVENLABS_AGENT_ID:-}
+      ELEVENLABS_PHONE_NUMBER_ID: ${ELEVENLABS_PHONE_NUMBER_ID:-}
+      ELEVENLABS_WEBHOOK_SECRET: ${ELEVENLABS_WEBHOOK_SECRET:-}
+      VOICE_TOOL_SECRET: ${VOICE_TOOL_SECRET:-dev-voice-tool-secret}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      REDIS_URL: ${REDIS_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEMO_MODE: ${DEMO_MODE:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health').status == 200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:5173"
+
+  # Optional: not required by the MVP (PostgreSQL holds all business data and the event outbox).
+  # Reserved for caching, rate limiting and job queues. Enable with: docker compose --profile redis up
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+  uploads:

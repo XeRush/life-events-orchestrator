@@ -1,0 +1,78 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Local databases, uploads, test artifacts
+*.db
+*.sqlite3
+backend/storage/
+backend/.test-storage/
+.test-storage/
+storage/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker overrides
+docker-compose.override.yml
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Claude Code local files
+.claude/
+
+# Additional Python / tooling
+.pytest_cache/
+.tox/
+.nox/
+.hypothesis/
+coverage.xml
+.python-version
+build/
+*.egg
+pip-wheel-metadata/
+
+# Node extras
+.npm/
+.eslintcache
+yarn-error.log*
+pnpm-debug.log*
+*.local
+coverage/
+
+# Secrets / keys
+*.pem
+*.key
+
+# Windows / editor extras
+Desktop.ini
+*.swo
+*~
+.vs/
