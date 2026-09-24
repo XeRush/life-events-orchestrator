@@ -55,7 +55,7 @@ export function LifeEventGraph({ graph, selected, onSelect }: { graph: CaseGraph
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const fit = () => setScale(Math.min(1, Math.max(0.62, el.clientWidth / width)));
+    const fit = () => setScale(Math.min(1, Math.max(0.55, el.clientWidth / width)));
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);

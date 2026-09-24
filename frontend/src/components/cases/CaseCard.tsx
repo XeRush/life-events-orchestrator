@@ -37,7 +37,7 @@ export function CaseCard({ reference, title, eventType, status, progress, curren
           <CaseStatusBadge status={status} />
         </div>
         <h3 className="text-2xl">{title}</h3>
-        <div className="mt-4 flex items-baseline justify-between text-sm">
+        <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
           <span className="font-display text-3xl">{progress.percent}%<span className="ms-1.5 font-sans text-sm text-muted">complete</span></span>
           <span className="text-muted">{progress.completed} of {progress.total} services completed</span>
         </div>
