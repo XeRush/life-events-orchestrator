@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
-/* LIFELOOP design tokens: institutional, quiet, human. Serif display + neutral sans. */
+/* Theme: light by default; `.dark` on <html> (set before first paint in index.html) switches every token. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* LifeLoop design tokens: institutional, calm, human. Editorial serif display + neutral sans + mono labels. */
 @theme {
   --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -11,6 +14,8 @@
   --color-surface: #fdfcf9;
   --color-ink: #14202b;
   --color-ink-2: #2b3a47;
+  --color-night: #0e1820;
+  --color-night-2: #16232e;
   --color-muted: #5f6b76;
   --color-faint: #8b95a0;
   --color-line: #e0dcd1;
@@ -29,12 +34,49 @@
   --color-violet-soft: #e9e1f3;
   --color-slate-soft: #e7e6e0;
 
+  /* Stage: the tinted panel behind the life-event graph, the voice console and hero diagrams. */
+  --color-stage: #edf0ec;
+  --color-stage-2: #fdfcf9;
+  /* Text on solid accent fills (bg-civic, bg-rose, bg-azure): white in light, near-black in dark. */
+  --color-on-accent: #ffffff;
+
   --shadow-card: 0 1px 0 rgba(20, 32, 43, 0.04), 0 8px 24px -12px rgba(20, 32, 43, 0.12);
   --shadow-pop: 0 20px 50px -20px rgba(20, 32, 43, 0.35);
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
+  :root.dark {
+    color-scheme: dark;
+    --color-paper: #0d161d;
+    --color-paper-2: #13202a;
+    --color-surface: #15212b;
+    --color-ink: #ece8df;
+    --color-ink-2: #c6cdd3;
+    --color-muted: #97a3ae;
+    --color-faint: #6d7985;
+    --color-line: #233241;
+    --color-line-2: #314351;
+
+    --color-civic: #4fd1a5;
+    --color-civic-soft: #123329;
+    --color-azure: #84b6e8;
+    --color-azure-soft: #162b42;
+    --color-amber: #e5b562;
+    --color-amber-soft: #33270f;
+    --color-rose: #f0937e;
+    --color-rose-soft: #3a1c16;
+    --color-violet: #bba3e8;
+    --color-violet-soft: #261e39;
+    --color-slate-soft: #1e2b36;
+
+    --color-stage: #0a1218;
+    --color-stage-2: #16232e;
+    --color-on-accent: #0b1218;
+
+    --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.35), 0 10px 30px -14px rgba(0, 0, 0, 0.65);
+    --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
+  }
   html {
     background: var(--color-paper);
     color: var(--color-ink);
@@ -51,17 +93,23 @@
     letter-spacing: -0.015em;
     font-weight: 500;
   }
+  /* Script-appropriate faces for the six supported languages. */
+  html:lang(ar) body { font-family: "IBM Plex Sans Arabic", var(--font-sans); }
+  html:lang(ur) body { font-family: "Noto Nastaliq Urdu", "IBM Plex Sans Arabic", var(--font-sans); line-height: 1.9; }
+  html:lang(hi) body { font-family: "Noto Sans Devanagari", var(--font-sans); }
+  html:lang(ml) body { font-family: "Noto Sans Malayalam", var(--font-sans); }
+  html:lang(ar) :is(h1, h2, h3) { font-family: "IBM Plex Sans Arabic", var(--font-display); letter-spacing: 0; font-weight: 600; }
+  html:lang(ur) :is(h1, h2, h3) { font-family: "Noto Nastaliq Urdu", var(--font-display); letter-spacing: 0; line-height: 1.8; }
+  html:lang(hi) :is(h1, h2, h3) { font-family: "Noto Sans Devanagari", var(--font-display); letter-spacing: 0; font-weight: 600; }
+  html:lang(ml) :is(h1, h2, h3) { font-family: "Noto Sans Malayalam", var(--font-display); letter-spacing: 0; font-weight: 600; }
+
   :focus-visible {
     outline: 2px solid var(--color-azure);
     outline-offset: 2px;
     border-radius: 6px;
   }
-  ::selection {
-    background: var(--color-civic-soft);
-  }
-  [dir="rtl"] .rtl-flip {
-    transform: scaleX(-1);
-  }
+  ::selection { background: var(--color-civic-soft); }
+  [dir="rtl"] .rtl-flip { transform: scaleX(-1); }
 }
 
 @layer components {
@@ -78,35 +126,56 @@
     border-radius: 18px;
     box-shadow: var(--shadow-card);
   }
-  .hairline {
-    border-color: var(--color-line);
+  /* Raised panel on a stage (theme-aware; the old always-dark look is gone). */
+  .card-night {
+    background: var(--color-stage-2);
+    border: 1px solid var(--color-line);
+    border-radius: 18px;
+    color: var(--color-ink);
   }
+  .stage {
+    background-color: var(--color-stage);
+    color: var(--color-ink);
+  }
+  .hairline { border-color: var(--color-line); }
   .scroll-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--color-line-2) transparent;
   }
-}
-
-/* Motion: flowing dashes on live graph edges. Disabled for reduced-motion users. */
-@keyframes flow {
-  to {
-    stroke-dashoffset: -24;
+  .paper-grain {
+    background-image: radial-gradient(color-mix(in oklab, var(--color-ink) 4%, transparent) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  /* Blueprint grid lines in the current ink colour (works on light and dark surfaces). */
+  .grid-lines, .night-grid {
+    background-image: linear-gradient(color-mix(in oklab, var(--color-ink) 5%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklab, var(--color-ink) 5%, transparent) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  /* Theme-aware loading shimmer (matches the boneyard bone colours). */
+  .shimmer {
+    background-image: linear-gradient(110deg, var(--bone) 30%, var(--bone-hi) 50%, var(--bone) 70%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
   }
 }
-.edge-live {
-  stroke-dasharray: 6 6;
-  animation: flow 1.2s linear infinite;
-}
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(43, 92, 138, 0.35); }
-  100% { box-shadow: 0 0 0 12px rgba(43, 92, 138, 0); }
-}
-.pulse-azure { animation: pulse-ring 1.8s ease-out infinite; }
-@keyframes pulse-ring-amber {
-  0% { box-shadow: 0 0 0 0 rgba(168, 116, 26, 0.4); }
-  100% { box-shadow: 0 0 0 12px rgba(168, 116, 26, 0); }
-}
+
+/* Motion that communicates state: flowing edges into live nodes, pulses on nodes that need someone. */
+@keyframes logo-dot { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+:root { --bone: #e9e6dd; --bone-hi: #f4f2ec; }
+:root.dark { --bone: #1b2833; --bone-hi: #253543; }
+@keyframes flow { to { stroke-dashoffset: -24; } }
+.edge-live { stroke-dasharray: 6 6; animation: flow 1.2s linear infinite; }
+@keyframes pulse-ring-azure { 0% { box-shadow: 0 0 0 0 rgba(43, 92, 138, 0.35); } 100% { box-shadow: 0 0 0 12px rgba(43, 92, 138, 0); } }
+@keyframes pulse-ring-amber { 0% { box-shadow: 0 0 0 0 rgba(168, 116, 26, 0.4); } 100% { box-shadow: 0 0 0 12px rgba(168, 116, 26, 0); } }
+@keyframes pulse-ring-rose { 0% { box-shadow: 0 0 0 0 rgba(180, 67, 47, 0.35); } 100% { box-shadow: 0 0 0 12px rgba(180, 67, 47, 0); } }
+.pulse-azure { animation: pulse-ring-azure 1.8s ease-out infinite; }
 .pulse-amber { animation: pulse-ring-amber 1.8s ease-out infinite; }
+.pulse-rose { animation: pulse-ring-rose 1.8s ease-out infinite; }
+@keyframes ring-in { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } }
+.phone-ring { animation: ring-in 1.2s ease-in-out infinite; transform-origin: 50% 20%; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -121,3 +190,19 @@
 html.lenis, html.lenis body { height: auto; }
 .lenis.lenis-smooth { scroll-behavior: auto !important; }
 .lenis.lenis-stopped { overflow: hidden; }
+
+/* Script fixes, unlayered so they win over Tailwind's leading-* and tracking-* utilities.
+   Arabic-script text must never be letter-spaced (it breaks cursive joining), and Nastaliq's tall
+   ascenders and deep descenders need far more line height than Latin display type. */
+html:lang(ar) *, html:lang(ur) * { letter-spacing: 0 !important; }
+html:lang(ur) :is(h1, h2, h3, .font-display) { font-family: "Noto Nastaliq Urdu", var(--font-display); line-height: 1.85 !important; }
+html:lang(ur) :is(p, li, dd, dt, label, blockquote) { line-height: 2.05 !important; }
+html:lang(ar) .font-display { font-family: "IBM Plex Sans Arabic", var(--font-display); }
+
+/* Theme switch: colours cross-fade instead of snapping (skipped for reduced motion via the rule above). */
+html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
+  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.25s ease, fill 0.35s ease, stroke 0.35s ease !important;
+}
+
+/* Skeleton bones are captured left-to-right; mirror the overlay for right-to-left pages. */
+[dir="rtl"] [data-boneyard-overlay] { transform: scaleX(-1); }

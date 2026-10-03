@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block preheader %}Confirm your email address to finish setting up LifeLoop.{% endblock %}
+{% block heading %}Confirm your email address{% endblock %}
+{% block content %}
+<p style="margin:0 0 16px 0; font-size:16px; line-height:25px;">Confirm this address so LifeLoop can keep your life-event case and its updates tied to you. We only use it for your account and case notifications.</p>
+{% endblock %}
+{% block after_action %}<p style="margin:0; font-size:14px; line-height:22px; color:#5F6B76;">This link expires in {{ expires_in }}. If you did not create a LifeLoop account, you can ignore this email.</p>{% endblock %}
+{% block footer %}You are receiving this because this address was used to register with LifeLoop.{% endblock %}

@@ -1,5 +1,14 @@
-# LIFELOOP - `docker compose up --build` starts PostgreSQL, the FastAPI backend (migrations + seed run on start) and the React frontend.
-# Configuration comes from .env (copy .env.example). Nothing else is required.
+# LifeLoop - `docker compose up --build` (or `make up`) starts the whole platform:
+#   postgres (authoritative state) . redis (cache) . kafka (KRaft, no ZooKeeper) . neo4j (graph projection)
+#   backend (FastAPI; runs migrations + idempotent seed on startup) . frontend (Vite build served by `vite preview`)
+# Configuration comes from .env (copy .env.example). Host ports are configurable in case another project uses them.
+
+name: lifeloop
+
+x-healthcheck-defaults: &hc
+  interval: 5s
+  timeout: 5s
+  retries: 30
 
 services:
   postgres:
@@ -9,14 +18,69 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lifeloop}
       POSTGRES_DB: lifeloop
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lifeloop -d lifeloop"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
+      <<: *hc
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U lifeloop -d lifeloop"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "redis-cli", "ping"]
+
+  kafka:
+    image: apache/kafka:3.9.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:19092,CONTROLLER://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:${KAFKA_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      <<: *hc
+      start_period: 20s
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 > /dev/null 2>&1"]
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-lifeloop-neo4j}
+      # Not NEO4J_*: the image maps every NEO4J_ variable to a server setting.
+      HEALTHCHECK_PASSWORD: ${NEO4J_PASSWORD:-lifeloop-neo4j}
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+      NEO4J_PLUGINS: "[]"
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      <<: *hc
+      start_period: 40s
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${HEALTHCHECK_PASSWORD}\" 'RETURN 1' > /dev/null 2>&1"]
 
   backend:
     build: ./backend
@@ -25,30 +89,34 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://lifeloop:${POSTGRES_PASSWORD:-lifeloop}@postgres:5432/lifeloop
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-dev-only-change-me}
-      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
-      ELEVENLABS_AGENT_ID: ${ELEVENLABS_AGENT_ID:-}
-      ELEVENLABS_PHONE_NUMBER_ID: ${ELEVENLABS_PHONE_NUMBER_ID:-}
-      ELEVENLABS_WEBHOOK_SECRET: ${ELEVENLABS_WEBHOOK_SECRET:-}
-      VOICE_TOOL_SECRET: ${VOICE_TOOL_SECRET:-dev-voice-tool-secret}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      REDIS_URL: ${REDIS_URL:-}
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-lifeloop-neo4j}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      RUN_MIGRATIONS_ON_STARTUP: ${RUN_MIGRATIONS_ON_STARTUP:-true}
+      SEED_ON_STARTUP: ${SEED_ON_STARTUP:-true}
+      STORAGE_DIR: /app/storage
+      LOG_OUTPUT: console
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - uploads:/app/storage
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health').status == 200 else 1)"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 15s
+      <<: *hc
+      start_period: 60s
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
 
   frontend:
     build: ./frontend
@@ -58,16 +126,14 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "5173:5173"
-
-  # Optional: not required by the MVP (PostgreSQL holds all business data and the event outbox).
-  # Reserved for caching, rate limiting and job queues. Enable with: docker compose --profile redis up
-  redis:
-    image: redis:7-alpine
-    profiles: ["redis"]
-    ports:
-      - "6379:6379"
+      - "${FRONTEND_PORT:-5173}:5173"
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1"]
 
 volumes:
   pgdata:
+  redisdata:
+  kafkadata:
+  neo4jdata:
   uploads:

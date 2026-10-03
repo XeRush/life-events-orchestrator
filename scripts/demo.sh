@@ -1,47 +1,35 @@
 #!/usr/bin/env bash
-# Bring the demo up: containers -> healthy backend -> migrations -> seed -> print the scenario.
+# Bring the demo up: containers -> healthy backend -> migrations -> idempotent seed -> print the scenario.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
+[ -f .env ] || cp .env.example .env
+set -a; source .env; set +a
 COMPOSE="${COMPOSE:-docker compose}"
+API="http://localhost:${BACKEND_PORT:-8000}"
+WEB="http://localhost:${FRONTEND_PORT:-5173}"
+
 $COMPOSE up --build -d
-
-echo "Waiting for the backend to become healthy..."
-for _ in $(seq 1 60); do
-  if curl -fsS http://localhost:8000/api/v1/health/ready >/dev/null 2>&1; then break; fi
-  sleep 2
-done
-curl -fsS http://localhost:8000/api/v1/health/ready >/dev/null || { echo "Backend did not become ready. Run: make logs"; exit 1; }
-
+bash scripts/wait-ready.sh "$API"
 $COMPOSE exec -T backend alembic upgrade head
-$COMPOSE exec -T backend python -m app.seed.seed_data
+$COMPOSE exec -T backend python -m app.seed
 
-cat <<'EOF'
+cat <<BANNER
 
-LIFELOOP DEMO READY
+  LifeLoop demo is ready  -  one call, one case, every step after birth
 
-Frontend:
-http://localhost:5173
+  Frontend   ${WEB}
+  API        ${API}        Swagger ${API}/docs
+  Health     ${API}/ready
 
-API:
-http://localhost:8000
+  Sign in (password: DEMO_USER_PASSWORD in .env)
+    Resident   demo.resident@lifeloop.local
+    Officer    demo.officer@lifeloop.local      (Mariam Al Ali, Amer Officer)
+    Admin      demo.admin@lifeloop.local
 
-Swagger:
-http://localhost:8000/docs
+  Demo case LL-DEMO-001 (Demo Child, Indian, English)
+    Birth certificate CLEARED . MOFA CLEARED . Consulate PARENT-REPORTED
+    Residence visa PROCESSING . Emirates ID PENDING . Insurance PENDING
 
-Demo login:
-demo@lifeloop.example / demo1234
+  Script: docs/demo/demo-script.md   Mock government integrations - no real UAE system is connected.
 
-Demo Case:
-L-49281  (pre-seeded: registration + certificate done, identity in progress)
-
-Scenario:
-New Baby / Birth
-
-  1. Sign in with the demo account, open Life events > L-49281 (or click "Watch Demo" on the landing page).
-  2. Voice center > Start demo call > "My daughter was born yesterday." > "Yes." -> a new case is created and its workflow starts.
-  3. On the case page (Demo mode panel): Complete Birth Registration -> Issue Birth Certificate -> Start Identity.
-  4. Require Document -> the assistant queues a callback (Callback center). Answer it and say "I don't have it right now."
-  5. Submit Document -> identity resumes. Approve Identity -> Additional Services unlocks. Complete Health / Additional Services.
-  6. Ask "Where are we?" at any point - the answer comes from persistent case state. Full script: docs/demo-script.md
-EOF
+BANNER

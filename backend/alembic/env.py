@@ -1,4 +1,4 @@
-"""Alembic environment (async engine; URL comes from application settings / DATABASE_URL)."""
+"""Alembic environment (async engine). The URL comes from the caller (app.db.migrate) or DATABASE_URL."""
 import asyncio
 from logging.config import fileConfig
 
@@ -10,10 +10,10 @@ from app.core.config import get_settings
 from app.db.base import Base
 
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+if config.config_file_name is not None and not config.attributes.get("database_url"):
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 target_metadata = Base.metadata
-URL = get_settings().database_url
+URL = config.attributes.get("database_url") or get_settings().database_url
 
 
 def run_migrations_offline() -> None:

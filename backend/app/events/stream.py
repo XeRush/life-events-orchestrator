@@ -1,7 +1,7 @@
-"""In-process pub/sub feeding the Server-Sent-Events dashboard stream.
+"""In-process pub/sub feeding the Server-Sent-Events streams.
 
-Notifications are only emitted after the database transaction commits, so a client that reacts to an SSE
-message and refetches always sees the new state. (Multi-instance deployments would swap this for Redis pub/sub.)
+Messages are published only after the database transaction commits, so a client that refetches on a message
+always sees the new state. A multi-instance deployment would back this with Redis pub/sub; the API is the same.
 """
 import asyncio
 from typing import Any
@@ -12,7 +12,7 @@ class EventHub:
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=200)
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=500)
         self._subscribers.add(queue)
         return queue
 
@@ -24,7 +24,11 @@ class EventHub:
             try:
                 queue.put_nowait(message)
             except asyncio.QueueFull:
-                pass  # slow consumer; the UI also polls as a fallback
+                pass  # slow consumer: the UI also refetches on reconnect
+
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._subscribers)
 
 
 hub = EventHub()

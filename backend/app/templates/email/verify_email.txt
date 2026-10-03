@@ -1,0 +1,10 @@
+{% if recipient_name %}Hello {{ recipient_name }},
+
+{% endif %}Confirm this address so LifeLoop can keep your life-event case and its updates tied to you:
+
+{{ action_url }}
+
+This link expires in {{ expires_in }}. If you did not create a LifeLoop account, you can ignore this email.
+
+--
+LifeLoop (prototype - Team Symphony, Ignyte x ElevenLabs Voice Agent Challenge)

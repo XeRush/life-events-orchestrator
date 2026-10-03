@@ -1,266 +1,157 @@
-"""Government-entity adapter contract + a database-backed mock implementation.
+"""GovernmentAdapter port and the mock implementation shared by every simulated authority.
 
-Real authorities would implement `GovernmentAdapter` against their own APIs. The mock keeps its own
-"system of record" (`mock_applications`) so LIFELOOP only ever learns outcomes by *asking* or by being
-*told* (webhook) - it never decides them.
+MOCK INTEGRATION: no adapter in this package talks to a real UAE government system. Each mock keeps its
+application state in the cache (Redis when available) and simulates SUBMITTED -> PROCESSING -> CLEARED and the
+failure paths (BLOCKED, DOCUMENT_MISSING, STALLED, REJECTED). Statuses reach the case only through the same
+`get_status` contract a real authority would implement.
 """
 from __future__ import annotations
 
+import asyncio
+import hashlib
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
-
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from app.core.clock import utcnow
-from app.models.government_entity import MockApplication
+from app.integrations.government.contracts import Requirements, StatusResponse, SubmitRequest, SubmitResponse
+from app.models.enums import Entity
+from app.workflows.birth_expat import CANVAS
+
+if TYPE_CHECKING:
+    from app.integrations.cache.cache import CacheManager
 
 
-# ---- errors -----------------------------------------------------------------------------------
 class AdapterError(Exception):
-    transient = False
+    retriable = False
 
 
-class EntityTimeout(AdapterError):
-    transient = True
+class AdapterTimeout(AdapterError):
+    retriable = True
 
 
-class EntityRateLimited(AdapterError):
-    transient = True
-
-
-class EntityUnavailable(AdapterError):
-    transient = True
+class AdapterUnavailable(AdapterError):
+    retriable = True
 
 
 class MalformedResponse(AdapterError):
-    transient = False
-
-
-class SubmissionRejected(AdapterError):
-    """The authority refused to even accept the submission (permanent)."""
+    retriable = False
 
 
 class ApplicationNotFound(AdapterError):
     pass
 
 
-class EntityConflict(AdapterError):
+class FieldsNotAllowed(AdapterError):
+    """Raised when more personal data than the authority's form requires is about to cross the boundary."""
+
+
+class NotSupported(AdapterError):
     pass
 
 
-# ---- DTOs -------------------------------------------------------------------------------------
-@dataclass
-class ServiceDefinition:
-    code: str
-    name: str
-    description: str
-    typical_days: int = 1
-    required_documents: list[dict[str, str]] = field(default_factory=list)
-
-
-@dataclass
-class SubmissionRequest:
-    idempotency_key: str
-    case_reference: str
-    service_code: str
-    applicant: dict[str, Any] = field(default_factory=dict)
-    documents: list[dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class SubmissionResult:
-    reference: str
-    status: str
-    duplicate: bool = False
-
-
-@dataclass
-class EntityStatus:
-    reference: str
-    entity_code: str
-    service_code: str
-    status: str
-    required_documents: list[dict[str, str]]
-    history: list[dict[str, Any]]
-    submitted_at: datetime
-    resolved_at: datetime | None
-
-
-@dataclass
-class EntityWebhook:
-    """What an authority would push to LIFELOOP when its own state changes."""
-
-    entity_code: str
-    reference: str
-    kind: str  # ACKNOWLEDGED | COMPLETED | DELAYED | REJECTED | DOCUMENT_REQUIRED
-    idempotency_key: str
-    payload: dict[str, Any] = field(default_factory=dict)
-
-
 class GovernmentAdapter(ABC):
-    entity_code: str
-    slug: str
-    name: str
-    description: str
-    catalog: list[ServiceDefinition]
+    entity: Entity
+    service: str
+    request_type: str
+    is_mock = True
 
     @abstractmethod
-    async def submit(self, session: AsyncSession, request: SubmissionRequest) -> SubmissionResult: ...
+    async def submit_request(self, request: SubmitRequest) -> SubmitResponse: ...
 
     @abstractmethod
-    async def get_status(self, session: AsyncSession, reference: str) -> EntityStatus: ...
+    async def get_status(self, external_ref: str) -> StatusResponse: ...
 
     @abstractmethod
-    async def forward_documents(self, session: AsyncSession, reference: str, documents: list[dict]) -> EntityStatus: ...
+    async def get_requirements(self) -> Requirements: ...
+
+    @abstractmethod
+    async def get_document_requirements(self) -> list[str]: ...
+
+    @abstractmethod
+    async def cancel_request(self, external_ref: str) -> StatusResponse: ...
 
 
 class MockGovernmentAdapter(GovernmentAdapter):
-    """Shared behaviour of the four mock authorities."""
+    prefix = "GOV"
+    allowed_fields: tuple[str, ...] = ()
+    required_documents: tuple[str, ...] = ()
+    sla = ""
+    published_fee: str | None = None
+    processing_detail = "Application received and queued for review."
+    cleared_detail = "Cleared."
+    terminal_success = "CLEARED"
 
-    ref_prefix = "GOV"
-    avg_processing_hours = 24.0
+    def __init__(self, cache: CacheManager, failures: dict[str, str | None]) -> None:
+        self.cache = cache
+        self.failures = failures  # shared dict: entity -> None | "timeout" | "unavailable" | "malformed"
 
-    # ---- authority-facing API -----------------------------------------------------------------
-    def service(self, code: str) -> ServiceDefinition:
-        for item in self.catalog:
-            if item.code == code:
-                return item
-        raise SubmissionRejected(f"{self.name} does not offer service {code}")
+    def _key(self, ref: str) -> str:
+        return f"mockgov:{self.entity.value}:{ref}"
 
-    async def submit(self, session: AsyncSession, request: SubmissionRequest) -> SubmissionResult:
-        existing = await session.scalar(
-            select(MockApplication).where(MockApplication.idempotency_key == request.idempotency_key)
-        )
-        if existing:  # duplicate request -> same application, never a second one
-            return SubmissionResult(existing.reference, existing.status, duplicate=True)
-        self.service(request.service_code)
-        now = utcnow()
-        count = await session.scalar(
-            select(func.count()).select_from(MockApplication).where(MockApplication.entity_code == self.entity_code)
-        )
-        number = (count or 0) + 1
-        reference = f"{self.ref_prefix}-{now.year}-{number:06d}"
-        while await session.scalar(select(MockApplication.id).where(MockApplication.reference == reference)):
-            number += 1
-            reference = f"{self.ref_prefix}-{now.year}-{number:06d}"
-        app = MockApplication(
-            entity_code=self.entity_code,
-            service_code=request.service_code,
-            reference=reference,
-            case_reference=request.case_reference,
-            idempotency_key=request.idempotency_key,
-            status="RECEIVED",
-            applicant=request.applicant,
-            history=[{"at": now.isoformat(), "status": "RECEIVED", "note": "Application received"}],
-            submitted_at=now,
-        )
-        session.add(app)
-        await session.flush()
-        return SubmissionResult(reference, "RECEIVED")
+    def _ref_for(self, idempotency_key: str) -> str:
+        digest = int(hashlib.sha256(idempotency_key.encode()).hexdigest()[:8], 16) % 1_000_000
+        return f"{self.prefix}-{utcnow().year}-{digest:06d}"
 
-    async def _get(self, session: AsyncSession, reference: str) -> MockApplication:
-        app = await session.scalar(
-            select(MockApplication).where(
-                MockApplication.reference == reference, MockApplication.entity_code == self.entity_code
-            )
-        )
-        if not app:
-            raise ApplicationNotFound(f"Application {reference} not found at {self.name}")
-        return app
+    async def _maybe_fail(self) -> None:
+        mode = self.failures.get(self.entity.value) or self.failures.get("*")
+        if mode == "timeout":
+            await asyncio.sleep(0)
+            raise AdapterTimeout(f"{self.entity.value} did not respond in time (simulated)")
+        if mode == "unavailable":
+            raise AdapterUnavailable(f"{self.entity.value} service unavailable (simulated 503)")
+        if mode == "malformed":
+            raise MalformedResponse(f"{self.entity.value} returned an unreadable response (simulated)")
 
-    async def find(self, session: AsyncSession, case_reference: str, service_code: str) -> MockApplication:
-        app = await session.scalar(
-            select(MockApplication)
-            .where(
-                MockApplication.entity_code == self.entity_code,
-                MockApplication.case_reference == case_reference,
-                MockApplication.service_code == service_code,
-            )
-            .order_by(MockApplication.created_at.desc())
-        )
-        if not app:
-            raise ApplicationNotFound(f"No {service_code} application for case {case_reference} at {self.name}")
-        return app
+    async def submit_request(self, request: SubmitRequest) -> SubmitResponse:
+        await self._maybe_fail()
+        extra = set(request.fields) - set(self.allowed_fields)
+        if extra:
+            raise FieldsNotAllowed(f"{self.entity.value} form does not take: {', '.join(sorted(extra))}")
+        ref = self._ref_for(request.idempotency_key)
+        existing = await self.cache.get(self._key(ref))
+        if existing:  # idempotent: the same filing twice is one application
+            return SubmitResponse(external_ref=ref, status=existing["status"], detail=existing["detail"], received_at=utcnow(), duplicate=True)
+        state = {"status": "SUBMITTED", "detail": "Application received.", "missing": [], "resident_present": False,
+                 "case_reference": request.case_reference, "fields": sorted(request.fields), "updated_at": utcnow().isoformat()}
+        await self.cache.set(self._key(ref), state, ttl=60 * 60 * 24 * 60)
+        return SubmitResponse(external_ref=ref, status="SUBMITTED", detail="Application received.", received_at=utcnow())
 
-    @staticmethod
-    def _to_status(app: MockApplication) -> EntityStatus:
-        return EntityStatus(
-            reference=app.reference, entity_code=app.entity_code, service_code=app.service_code,
-            status=app.status, required_documents=list(app.required_documents or []),
-            history=list(app.history or []), submitted_at=app.submitted_at, resolved_at=app.resolved_at,
-        )
+    async def get_status(self, external_ref: str) -> StatusResponse:
+        await self._maybe_fail()
+        state = await self.cache.get(self._key(external_ref))
+        if not state:
+            raise ApplicationNotFound(f"{self.entity.value} has no application {external_ref}")
+        return StatusResponse(external_ref=external_ref, status=state["status"], detail=state["detail"],
+                              missing_documents=state.get("missing", []), updated_at=utcnow(),
+                              resident_present=state.get("resident_present", False))
 
-    async def get_status(self, session: AsyncSession, reference: str) -> EntityStatus:
-        return self._to_status(await self._get(session, reference))
+    async def get_requirements(self) -> Requirements:
+        return Requirements(entity=self.entity.value, service=self.service, required_fields=list(self.allowed_fields),
+                            required_documents=list(self.required_documents), published_fee=self.published_fee,
+                            fee_source=CANVAS if self.published_fee else None, sla=self.sla)
 
-    async def forward_documents(self, session: AsyncSession, reference: str, documents: list[dict]) -> EntityStatus:
-        app = await self._get(session, reference)
-        if app.status == "COMPLETED":
-            return self._to_status(app)
-        self._transition(app, "PROCESSING", "Additional documents received; review resumed")
-        app.required_documents = []
-        await session.flush()
-        return self._to_status(app)
+    async def get_document_requirements(self) -> list[str]:
+        return list(self.required_documents)
 
-    # ---- authority-side simulation (what a caseworker's system would do) ----------------------
-    @staticmethod
-    def _transition(app: MockApplication, status: str, note: str) -> None:
-        now = utcnow()
-        app.status = status
-        app.history = [*(app.history or []), {"at": now.isoformat(), "status": status, "note": note}]
-        if status in {"COMPLETED", "REJECTED"}:
-            app.resolved_at = now
+    async def cancel_request(self, external_ref: str) -> StatusResponse:
+        state = await self.cache.get(self._key(external_ref)) or {}
+        state.update(status="CANCELLED", detail="Cancelled at the requester's request.", updated_at=utcnow().isoformat())
+        await self.cache.set(self._key(external_ref), state, ttl=60 * 60 * 24 * 60)
+        return await self.get_status(external_ref)
 
-    def _webhook(self, app: MockApplication, kind: str, payload: dict | None = None, *, repeatable: bool = False) -> EntityWebhook:
-        suffix = f":{len(app.history or [])}" if repeatable else ""
-        return EntityWebhook(
-            entity_code=self.entity_code,
-            reference=app.reference,
-            kind=kind,
-            idempotency_key=f"entity:{app.reference}:{kind}{suffix}",
-            payload=payload or {},
-        )
-
-    async def acknowledge(self, session: AsyncSession, app: MockApplication) -> EntityWebhook:
-        if app.status == "RECEIVED":
-            self._transition(app, "PROCESSING", "Application accepted for processing")
-        await session.flush()
-        return self._webhook(app, "ACKNOWLEDGED")
-
-    async def complete(self, session: AsyncSession, app: MockApplication) -> EntityWebhook:
-        if app.status not in {"COMPLETED"}:
-            self._transition(app, "COMPLETED", f"{self.service(app.service_code).name} approved by {self.name}")
-        await session.flush()
-        return self._webhook(app, "COMPLETED", {"decision": "approved_by_authority"})
-
-    async def delay(self, session: AsyncSession, app: MockApplication, hours: int = 24, reason: str = "Queue backlog") -> EntityWebhook:
-        self._guard_open(app)
-        self._transition(app, "DELAYED", f"Delayed by {hours}h: {reason}")
-        await session.flush()
-        return self._webhook(app, "DELAYED", {"delay_hours": hours, "reason": reason}, repeatable=True)
-
-    async def reject(self, session: AsyncSession, app: MockApplication, reason: str, retryable: bool = False, reason_code: str = "REJECTED") -> EntityWebhook:
-        self._guard_open(app)
-        self._transition(app, "REJECTED", reason)
-        await session.flush()
-        return self._webhook(
-            app, "REJECTED", {"reason": reason, "retryable": retryable, "reason_code": reason_code}, repeatable=True
-        )
-
-    async def require_documents(self, session: AsyncSession, app: MockApplication, documents: list[dict] | None = None) -> EntityWebhook:
-        self._guard_open(app)
-        docs = documents or self.service(app.service_code).required_documents
-        if not docs:
-            raise EntityConflict(f"{self.name} has no document requirement configured for {app.service_code}")
-        app.required_documents = docs
-        self._transition(app, "DOCUMENT_REQUIRED", "Additional information required from applicant")
-        await session.flush()
-        return self._webhook(app, "DOCUMENT_REQUIRED", {"documents": docs}, repeatable=True)
-
-    @staticmethod
-    def _guard_open(app: MockApplication) -> None:
-        if app.status == "COMPLETED":
-            raise EntityConflict(f"Application {app.reference} is already completed")
+    # --- simulation hooks (demo control panel / tests only) -----------------------------------------
+    async def simulate(self, external_ref: str, status: str, *, detail: str | None = None, missing: list[str] | None = None,
+                       resident_present: bool = False) -> dict[str, Any]:
+        state = await self.cache.get(self._key(external_ref)) or {"case_reference": "", "fields": []}
+        default_detail = {
+            "PROCESSING": self.processing_detail, "CLEARED": self.cleared_detail, "COMPLETED": self.cleared_detail,
+            "BLOCKED": "The authority has put the application on hold: the record does not match the hospital notification.",
+            "DOCUMENT_MISSING": "The authority needs an additional document before it can continue.",
+            "STALLED": "No movement from the authority within the expected time.",
+            "REJECTED": "The authority did not approve the application.",
+            "WAITING_FOR_PARENT": "The applicant must attend in person.",
+        }.get(status, "Status updated.")
+        state.update(status=status, detail=detail or default_detail, missing=missing or [], resident_present=resident_present,
+                     updated_at=utcnow().isoformat())
+        await self.cache.set(self._key(external_ref), state, ttl=60 * 60 * 24 * 60)
+        return state

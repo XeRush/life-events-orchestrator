@@ -1,27 +1,46 @@
 import { motion } from "framer-motion";
 import { prefersReducedMotion } from "../../animations/variants";
-import { cn } from "../../utils/format";
+import type { AgentState } from "../../hooks/useVoiceCall";
+import { useT } from "../../i18n";
+import { cn } from "../../lib/format";
 
-export type VoiceState = "idle" | "listening" | "thinking" | "speaking";
+const AMP: Record<AgentState, number> = { idle: 0.08, connecting: 0.15, listening: 0.45, thinking: 0.22, speaking: 1, ended: 0.05 };
+const COLOR: Record<AgentState, string> = {
+  idle: "bg-line-2", connecting: "bg-azure/60", listening: "bg-azure", thinking: "bg-violet", speaking: "bg-civic", ended: "bg-line-2",
+};
 
-const BARS = 41;
-
-/** Animated waveform. Amplitude and colour follow the assistant state (idle / listening / thinking / speaking). */
-export function Waveform({ state }: { state: VoiceState }) {
+/**
+ * Animated waveform. Amplitude, rhythm and colour follow the assistant state (idle / connecting / listening /
+ * thinking / speaking / ended). Thinking breathes slowly; speaking moves fast; muted flattens the bars.
+ * Bars scale on the Y axis only (transform), so the animation never triggers layout.
+ * The accessible name is the translated state, so screen readers hear the same thing sighted users see.
+ * `dark` is accepted for older call sites and ignored: colours follow the theme.
+ */
+export function Waveform({ state, muted = false, size = "lg", className }: {
+  state: AgentState; dark?: boolean; muted?: boolean; size?: "sm" | "lg"; className?: string;
+}) {
+  const t = useT();
   const reduce = prefersReducedMotion();
-  const amp = { idle: 0.08, listening: 0.45, thinking: 0.22, speaking: 1 }[state];
-  const color = { idle: "bg-line-2", listening: "bg-azure", thinking: "bg-violet", speaking: "bg-civic" }[state];
+  const bars = size === "lg" ? 41 : 23;
+  const box = size === "lg" ? 76 : 32;
+  const amp = muted ? 0.06 : AMP[state];
+  const still = state === "idle" || state === "ended" || muted;
+  const color = muted ? "bg-line-2" : COLOR[state];
   return (
-    <div className="flex h-28 items-center justify-center gap-[3px]" role="img" aria-label={`Assistant is ${state}`}>
-      {Array.from({ length: BARS }).map((_, i) => {
-        const envelope = Math.sin((i / (BARS - 1)) * Math.PI); // taller in the middle
-        const base = 8 + envelope * 64 * amp;
+    <div className={cn("flex items-center justify-center gap-[3px]", size === "lg" ? "h-24" : "h-10", className)} role="img" aria-label={t(`resident.voice.state.${state}`)}>
+      {Array.from({ length: bars }).map((_, i) => {
+        const envelope = Math.sin((i / (bars - 1)) * Math.PI); // taller in the middle
+        const base = Math.min(1, ((size === "lg" ? 6 : 4) + envelope * (box - 8) * amp) / box);
         return (
           <motion.span
             key={i}
-            className={cn("w-[3px] rounded-full", color)}
-            animate={reduce ? { height: base } : { height: state === "idle" ? base : [base * 0.35, base, base * 0.55, base * 0.9, base * 0.4] }}
-            transition={{ duration: state === "thinking" ? 1.6 : 0.9 + (i % 5) * 0.08, repeat: Infinity, ease: "easeInOut", delay: (i % 9) * 0.05 }}
+            className={cn("rounded-full transition-colors duration-500", size === "lg" ? "w-[3px]" : "w-[2px]", color)}
+            style={{ height: box }}
+            initial={false}
+            animate={reduce || still ? { scaleY: base } : { scaleY: [base * 0.35, base, base * 0.55, base * 0.9, base * 0.4] }}
+            transition={reduce || still
+              ? { duration: 0.4 }
+              : { duration: state === "thinking" ? 1.6 : state === "speaking" ? 0.7 + (i % 5) * 0.06 : 0.9 + (i % 5) * 0.08, repeat: Infinity, ease: "easeInOut", delay: (i % 9) * 0.05 }}
           />
         );
       })}

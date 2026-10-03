@@ -52,10 +52,11 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
-def enum_type(enum_cls: type[enum.Enum]) -> sa.Enum:
+def enum_type(enum_cls: type[enum.Enum], name: str | None = None) -> sa.Enum:
     """String-backed enum with a CHECK constraint (portable, easy to migrate)."""
     return sa.Enum(
         enum_cls,
+        name=name or enum_cls.__name__.lower(),
         native_enum=False,
         length=40,
         create_constraint=True,
