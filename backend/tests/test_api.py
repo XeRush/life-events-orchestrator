@@ -112,9 +112,9 @@ async def test_consent_endpoint_starts_workflow(client, resident_headers):
     assert (await client.get(f"/api/v1/cases/{case['reference']}", headers=resident_headers)).json()["status"] == "IN_PROGRESS"
 
 
-async def test_unsupported_event_type_and_validation(client, resident_headers):
+async def test_unknown_event_type_and_validation(client, resident_headers):
     r = await client.post("/api/v1/cases", json={"event_type": "MARRIAGE", "consent_service_initiation": True}, headers=resident_headers)
-    assert r.status_code == 422 and r.json()["error"]["code"] == "unsupported_event_type"
+    assert r.status_code == 201 and r.json()["event_type"] == "MARRIAGE" and r.json()["status"] == "IN_PROGRESS"
     r = await client.post("/api/v1/cases", json={"event_type": "NOPE"}, headers=resident_headers)
     assert r.status_code == 404
     r = await client.post("/api/v1/cases", json={"event_date": "not-a-date"}, headers=resident_headers)

@@ -12,6 +12,7 @@ class CreateCaseIn(BaseModel):
     event_date: date | None = None
     participants: list[dict[str, Any]] = Field(default_factory=list)
     preferences: dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, str] = Field(default_factory=dict, description="Event-specific facts, e.g. partner_name, new_address, business_name.")
     consent_service_initiation: bool = False
     consent_callback: bool = False
     consent_data_processing: bool = False

@@ -29,7 +29,7 @@ Seeded demo user: `demo@lifeloop.example` / `demo1234` (role `ADMIN`).
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/cases` | Create a case. Body: `event_type`, `event_date`, `participants`, `preferences`, `consent_service_initiation`, `consent_callback`, `consent_data_processing`, `idempotency_key`. With service-initiation consent the workflow starts immediately (201); otherwise `PENDING_CONSENT`. 422 `unsupported_event_type` for definition-only templates. |
+| POST | `/cases` | Create a case. Body: `event_type`, `event_date`, `participants`, `preferences`, `consent_service_initiation`, `consent_callback`, `consent_data_processing`, `idempotency_key`. With service-initiation consent the workflow starts immediately (201); otherwise `PENDING_CONSENT`. 422 `unsupported_event_type` for a template that is not yet configured. |
 | GET | `/cases?status=&limit=&offset=` | List (paginated) |
 | GET | `/cases/{id}` | Case with progress, current stage, waiting-on, plain-language summary |
 | GET | `/cases/{id}/snapshot` | Backend-verified facts (what the voice agent reads) |
@@ -38,7 +38,7 @@ Seeded demo user: `demo@lifeloop.example` / `demo1234` (role `ADMIN`).
 | GET | `/cases/{id}/passport` | Zero-repetition passport: identity, event, participants, consents, preferences, documents, services, state, timeline, conversations |
 | POST | `/cases/{id}/pause` `/resume` `/escalate` | Lifecycle (409 when not allowed) |
 | POST | `/cases/{id}/callback` | Request a callback `{reason, when}` (`tomorrow`, `in 2 hours`, ISO) |
-| GET | `/life-events` | Templates (`is_configured`) |
+| GET | `/life-events` | Templates (`is_configured`; all four are configured) |
 | GET | `/life-events/{code}/graph` | Definition graph of a template |
 
 ```bash

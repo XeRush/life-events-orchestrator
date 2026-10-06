@@ -68,6 +68,9 @@ async def seed_workflows(session: AsyncSession, entities: dict[str, GovernmentEn
                                    icon=spec["icon"], is_configured=spec["configured"])
             session.add(life_event)
             await session.flush()
+        else:  # keep existing databases in step with the definitions (e.g. events switched on since the last seed)
+            life_event.is_configured = spec["configured"]
+            life_event.description = spec["description"]
         code = f"{spec['code']}_V1"
         workflow = await session.scalar(select(Workflow).where(Workflow.code == code))
         if not workflow:
@@ -77,14 +80,18 @@ async def seed_workflows(session: AsyncSession, entities: dict[str, GovernmentEn
         nodes: dict[str, WorkflowNode] = {}
         for order, n in enumerate(spec["nodes"]):
             node = await session.scalar(select(WorkflowNode).where(WorkflowNode.workflow_id == workflow.id, WorkflowNode.key == n["key"]))
+            entity_id = entities[n["entity"]].id if n["entity"] else None
             if not node:
                 node = WorkflowNode(
                     workflow_id=workflow.id, key=n["key"], name=n["name"], description=n["description"],
-                    entity_id=entities[n["entity"]].id if n["entity"] else None, service_code=n["service"],
+                    entity_id=entity_id, service_code=n["service"],
                     is_system=n["system"], sort_order=order, config=n["config"],
                 )
                 session.add(node)
                 await session.flush()
+            else:  # re-point existing nodes at their authority when a definition gains one
+                node.entity_id, node.service_code, node.config = entity_id, n["service"], n["config"]
+                node.name, node.description = n["name"], n["description"]
             nodes[n["key"]] = node
         for n in spec["nodes"]:
             for dep in n["deps"]:

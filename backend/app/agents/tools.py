@@ -34,6 +34,9 @@ TOOL_SPECS: list[ToolSpec] = [
         description="Create a life-event case and start its workflow. ONLY call after the resident has clearly said yes to your consent question.",
         parameters={
             "event_type": {"type": "string", "description": "BIRTH, MARRIAGE, MOVE or BUSINESS_START."},
+            "partner_name": {"type": "string", "description": "Spouse's name if the resident gave it (MARRIAGE)."},
+            "new_address": {"type": "string", "description": "The new home address if the resident gave it (MOVE)."},
+            "business_name": {"type": "string", "description": "Proposed trade name if the resident gave it (BUSINESS_START)."},
             "event_date": {"type": "string", "description": "ISO date (YYYY-MM-DD) or words like 'yesterday'."},
             "child_name": {"type": "string", "description": "Child's name if the resident gave it."},
             "relationship": {"type": "string", "description": "daughter, son or child."},
@@ -178,15 +181,19 @@ class ToolRunner:
         participants: list[dict[str, Any]] = [{"role": "parent", "name": user.full_name}]
         if event_type == "BIRTH":
             participants.append({"role": "child", "relationship": args.get("relationship") or "child", "name": args.get("child_name") or "Newborn"})
+        elif event_type == "MARRIAGE":
+            participants.append({"role": "spouse", "name": args.get("partner_name") or "Partner"})
+        details = {k: str(args[k]) for k in ("partner_name", "new_address", "business_name") if args.get(k)}
         callback_ok = args.get("callback_consent", True) is not False
         data = CreateCaseInput(
             event_type=event_type, event_date=event_date, participants=participants, preferences={"language": lang},
-            memory={"reported_via": "voice", "resident_words": args.get("resident_words")} if args.get("resident_words") else {"reported_via": "voice"},
             consents={
                 ConsentType.SERVICE_INITIATION_CONSENT: True, ConsentType.DATA_PROCESSING_CONSENT: True,
                 ConsentType.CALLBACK_CONSENT: callback_ok,
             },
             source="voice", idempotency_key=f"voice:{conv.id}:{event_type}" if conv else None,
+            memory={"reported_via": "voice", **({"resident_words": args["resident_words"]} if args.get("resident_words") else {}),
+                    **({"details": details} if details else {})},
         )
         case, created = await self.c.cases.create_case(user, data, actor="ai:voice-agent", actor_type=ActorType.AI_AGENT)
         await self.c.bus.drain()  # runs activation: tasks + first submissions

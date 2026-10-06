@@ -151,6 +151,7 @@ class OrchestrationService:
                 "resident_ref": str(case.user_id), "event_type": case.event_type,
                 "event_date": case.event_date.isoformat() if case.event_date else None,
                 "participants": [p.get("role") for p in case.participants or []],
+                "details": (case.memory or {}).get("details", {}),
             },
         )
         try:

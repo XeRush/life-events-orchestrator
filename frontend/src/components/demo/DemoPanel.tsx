@@ -8,9 +8,15 @@ import { Badge, Button, Card } from "../ui/primitives";
 
 const GROUPS: { label: string; actions: string[] }[] = [
   { label: "Birth registration authority", actions: ["complete_birth_registration", "issue_birth_certificate"] },
-  { label: "Civil identity authority", actions: ["start_identity", "delay_identity", "require_document", "submit_document", "approve_identity", "reject_identity"] },
+  { label: "Civil identity authority", actions: ["start_identity", "delay_identity", "require_document", "submit_document", "approve_identity", "reject_identity", "complete_identity_update"] },
   { label: "Health / insurance authority", actions: ["start_health", "complete_health"] },
   { label: "Additional services authority", actions: ["start_additional_services", "complete_additional_services"] },
+  { label: "Marriage registry", actions: ["complete_marriage_registration", "complete_marriage_certificate"] },
+  { label: "Civil records office", actions: ["complete_record_updates"] },
+  { label: "Address registry", actions: ["complete_address_update"] },
+  { label: "Utilities transfer office", actions: ["complete_utilities_transfer"] },
+  { label: "Commerce registry", actions: ["complete_trade_name", "complete_business_license"] },
+  { label: "Tax authority", actions: ["complete_tax_registration"] },
   { label: "LIFELOOP", actions: ["trigger_callback", "replan_workflow"] },
 ];
 

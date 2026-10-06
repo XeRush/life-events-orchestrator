@@ -3,6 +3,14 @@ from app.integrations.government.base import GovernmentAdapter, MockGovernmentAd
 from app.integrations.government.birth_registration import BirthRegistrationAdapter
 from app.integrations.government.health import AdditionalServicesAdapter, HealthAdapter
 from app.integrations.government.identity import IdentityAdapter
+from app.integrations.government.life_event_authorities import (
+    AddressRegistryAdapter,
+    CivilRecordsAdapter,
+    CommerceRegistryAdapter,
+    MarriageRegistryAdapter,
+    TaxAuthorityAdapter,
+    UtilitiesAdapter,
+)
 
 
 class AdapterRegistry:
@@ -10,6 +18,9 @@ class AdapterRegistry:
         self._adapters: dict[str, GovernmentAdapter] = {}
         for adapter in adapters or [
             BirthRegistrationAdapter(), IdentityAdapter(), HealthAdapter(), AdditionalServicesAdapter(),
+            MarriageRegistryAdapter(), CivilRecordsAdapter(),
+            AddressRegistryAdapter(), UtilitiesAdapter(),
+            CommerceRegistryAdapter(), TaxAuthorityAdapter(),
         ]:
             self.register(adapter)
 

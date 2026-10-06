@@ -29,7 +29,7 @@ async def test_seed_is_idempotent(session):
     await run_seed(session, get_settings())
     await run_seed(session, get_settings())
     assert await _counts(session) == first
-    assert first["GovernmentEntity"] == 4 and first["LifeEvent"] == 4 and first["LifeEventCase"] == 1
+    assert first["GovernmentEntity"] == 10 and first["LifeEvent"] == 4 and first["LifeEventCase"] == 1
 
 
 async def test_seeded_demo_case_matches_the_story(session):

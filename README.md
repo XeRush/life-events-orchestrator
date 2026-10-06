@@ -9,7 +9,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![ElevenLabs](https://img.shields.io/badge/Voice-ElevenLabs-000000)](docs/elevenlabs.md)
 [![uv](https://img.shields.io/badge/packaging-uv-DE5FE9)](https://docs.astral.sh/uv/)
-[![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)](docs/development.md)
+[![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)](docs/development.md)
 [![Status](https://img.shields.io/badge/status-hackathon%20prototype-orange)](docs/judging.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -88,7 +88,7 @@ cd ../frontend && npm install && npm run dev
 
 Demo login: `demo@lifeloop.example` / `demo1234` (seeded case **L-49281**).
 
-> Tests run on in-memory SQLite and need no Docker: `cd backend && uv run pytest` (63 tests, including the full birth journey).
+> Tests run on in-memory SQLite and need no Docker: `cd backend && uv run pytest` (71 tests, including the full birth, marriage, moving and business journeys).
 > Note: the Docker path was not exercised in the final build environment; if it misbehaves see [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Environment variables

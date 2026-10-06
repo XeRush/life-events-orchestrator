@@ -17,6 +17,12 @@ class IdentityAdapter(MockGovernmentAdapter):
             required_documents=[{"type": "PROOF_OF_ADDRESS", "name": "Proof of parent's address"}],
         ),
         ServiceDefinition(
+            "IDENTITY_RECORD_UPDATE",
+            "Identity Record Update",
+            "Reflect the resident's new registered address on the identity record.",
+            2,
+        ),
+        ServiceDefinition(
             "IDENTITY_MANUAL_REVIEW",
             "Identity Manual Review",
             "Officer-led review path used when the standard application cannot proceed.",

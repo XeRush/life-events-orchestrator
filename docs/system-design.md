@@ -8,7 +8,7 @@
 
 ## Core concepts
 
-- **Life event template** (`life_events`, `workflows`, `workflow_nodes`, `workflow_edges`): a versioned definition of the journey. BIRTH is fully implemented; MARRIAGE, MOVE and BUSINESS_START exist as definitions only (`is_configured = false`) and refuse activation with an explicit message.
+- **Life event template** (`life_events`, `workflows`, `workflow_nodes`, `workflow_edges`): a versioned definition of the journey. All four templates (BIRTH, MARRIAGE, MOVE, BUSINESS_START) are fully implemented against mock authorities (`is_configured = true`). A template with `is_configured = false` would refuse activation with an explicit message.
 - **Life Event Case** (`life_event_cases`): the persistent case. Holds event, date, participants, preferences and `memory` (facts collected so far) - the passport.
 - **Service task** (`service_tasks`, `task_dependencies`): a workflow node instantiated for one case, plus per-case dependency edges. The graph API and UI are projections of these rows.
 - **Domain event** (`events`): append-only record of everything meaningful; the source of the timeline and the audit trail.

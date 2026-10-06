@@ -32,36 +32,47 @@ BIRTH_NODES: list[Node] = [
 ]
 
 MARRIAGE_NODES: list[Node] = [
-    node("MARRIAGE_REPORTED", "Marriage Reported", "Marriage reported by the resident.", None, None, [], system=True),
-    node("MARRIAGE_REGISTRATION", "Marriage Registration", "Register the marriage.", None, None, ["MARRIAGE_REPORTED"]),
-    node("MARRIAGE_CERTIFICATE", "Marriage Certificate", "Issue the marriage certificate.", None, None, ["MARRIAGE_REGISTRATION"]),
-    node("RECORD_UPDATES", "Record Updates", "Update civil and identity records.", None, None, ["MARRIAGE_CERTIFICATE"]),
-    node("CASE_COMPLETE", "Case Complete", "All services confirmed.", None, None, ["RECORD_UPDATES"], system=True),
+    node("MARRIAGE_REPORTED", "Marriage Reported", "The resident reported the marriage and consented to coordination.", None, None, [], system=True),
+    node("MARRIAGE_REGISTRATION", "Marriage Registration", "Register the marriage in the civil register.", "MARRIAGE_REGISTRY", "MARRIAGE_REGISTRATION",
+         ["MARRIAGE_REPORTED"], started_label="Marriage registration initiated", completed_label="Marriage registration completed"),
+    node("MARRIAGE_CERTIFICATE", "Marriage Certificate", "Issue the official marriage certificate.", "MARRIAGE_REGISTRY", "MARRIAGE_CERTIFICATE",
+         ["MARRIAGE_REGISTRATION"], started_label="Marriage certificate requested", completed_label="Marriage certificate issued"),
+    node("RECORD_UPDATES", "Record Updates", "Update civil status records to reflect the marriage.", "CIVIL_RECORDS", "RECORD_UPDATE",
+         ["MARRIAGE_CERTIFICATE"], started_label="Civil record update initiated", completed_label="Civil records updated"),
+    node("CASE_COMPLETE", "Case Complete", "All required services confirmed by their authorities.", None, None, ["RECORD_UPDATES"], system=True),
 ]
 
 MOVE_NODES: list[Node] = [
-    node("MOVE_REPORTED", "Move Reported", "Move reported by the resident.", None, None, [], system=True),
-    node("ADDRESS_UPDATE", "Address Update", "Update the registered address.", None, None, ["MOVE_REPORTED"]),
-    node("IDENTITY_UPDATE", "Identity Record Update", "Reflect the new address on identity records.", None, None, ["ADDRESS_UPDATE"]),
-    node("UTILITIES", "Utilities Transfer", "Transfer utilities to the new address.", None, None, ["ADDRESS_UPDATE"]),
-    node("CASE_COMPLETE", "Case Complete", "All services confirmed.", None, None, ["IDENTITY_UPDATE", "UTILITIES"], system=True),
+    node("MOVE_REPORTED", "Move Reported", "The resident reported the move and consented to coordination.", None, None, [], system=True),
+    node("ADDRESS_UPDATE", "Address Update", "Update the registered address.", "ADDRESS_REGISTRY", "ADDRESS_UPDATE",
+         ["MOVE_REPORTED"], started_label="Address update initiated", completed_label="Registered address updated"),
+    node("IDENTITY_UPDATE", "Identity Record Update", "Reflect the new address on the identity record.", "IDENTITY", "IDENTITY_RECORD_UPDATE",
+         ["ADDRESS_UPDATE"], started_label="Identity record update initiated", completed_label="Identity record updated"),
+    node("UTILITIES", "Utilities Transfer", "Transfer utilities to the new address.", "UTILITIES", "UTILITY_TRANSFER",
+         ["ADDRESS_UPDATE"], started_label="Utilities transfer initiated", completed_label="Utilities transferred"),
+    node("CASE_COMPLETE", "Case Complete", "All required services confirmed by their authorities.", None, None,
+         ["IDENTITY_UPDATE", "UTILITIES"], system=True),
 ]
 
 BUSINESS_NODES: list[Node] = [
-    node("BUSINESS_REPORTED", "Business Start Reported", "Business start reported by the resident.", None, None, [], system=True),
-    node("TRADE_NAME", "Trade Name Reservation", "Reserve a trade name.", None, None, ["BUSINESS_REPORTED"]),
-    node("LICENSE", "Business License", "Issue the business license.", None, None, ["TRADE_NAME"]),
-    node("TAX_REGISTRATION", "Tax Registration", "Register for tax.", None, None, ["LICENSE"]),
-    node("CASE_COMPLETE", "Case Complete", "All services confirmed.", None, None, ["TAX_REGISTRATION"], system=True),
+    node("BUSINESS_REPORTED", "Business Start Reported", "The resident reported the new business and consented to coordination.", None, None, [], system=True),
+    node("TRADE_NAME", "Trade Name Reservation", "Reserve the trade name.", "COMMERCE_REGISTRY", "TRADE_NAME_RESERVATION",
+         ["BUSINESS_REPORTED"], started_label="Trade name reservation initiated", completed_label="Trade name reserved"),
+    node("LICENSE", "Business License", "Issue the business licence.", "COMMERCE_REGISTRY", "BUSINESS_LICENSE",
+         ["TRADE_NAME"], started_label="Business licence application initiated", completed_label="Business licence issued"),
+    node("TAX_REGISTRATION", "Tax Registration", "Register the business for tax.", "TAX", "TAX_REGISTRATION",
+         ["LICENSE"], started_label="Tax registration initiated", completed_label="Tax registration completed"),
+    node("CASE_COMPLETE", "Case Complete", "All required services confirmed by their authorities.", None, None,
+         ["TAX_REGISTRATION"], system=True),
 ]
 
 LIFE_EVENTS: list[dict[str, Any]] = [
     {"code": "BIRTH", "name": "Birth", "case_title": "New Baby", "icon": "baby", "configured": True,
      "description": "A child is born: registration, certificate, identity and health cover.", "nodes": BIRTH_NODES},
-    {"code": "MARRIAGE", "name": "Marriage", "case_title": "Marriage", "icon": "heart", "configured": False,
-     "description": "Workflow definition only - not connected to authorities in this prototype.", "nodes": MARRIAGE_NODES},
-    {"code": "MOVE", "name": "Moving", "case_title": "Moving Home", "icon": "home", "configured": False,
-     "description": "Workflow definition only - not connected to authorities in this prototype.", "nodes": MOVE_NODES},
-    {"code": "BUSINESS_START", "name": "Starting a business", "case_title": "New Business", "icon": "briefcase", "configured": False,
-     "description": "Workflow definition only - not connected to authorities in this prototype.", "nodes": BUSINESS_NODES},
+    {"code": "MARRIAGE", "name": "Marriage", "case_title": "Marriage", "icon": "heart", "configured": True,
+     "description": "A marriage is registered, the certificate issued and civil records updated.", "nodes": MARRIAGE_NODES},
+    {"code": "MOVE", "name": "Moving", "case_title": "Moving Home", "icon": "home", "configured": True,
+     "description": "A move is reflected in the registered address, identity record and utilities.", "nodes": MOVE_NODES},
+    {"code": "BUSINESS_START", "name": "Starting a business", "case_title": "New Business", "icon": "briefcase", "configured": True,
+     "description": "A new business gets its trade name, licence and tax registration.", "nodes": BUSINESS_NODES},
 ]

@@ -26,7 +26,7 @@ async def case_out(c: ServiceContainer, case: LifeEventCase) -> dict[str, Any]:
     }
 
 
-@router.get("/life-events", summary="Life-event templates (BIRTH is fully implemented)")
+@router.get("/life-events", summary="Life-event templates (all four are implemented)")
 async def life_events(_: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> list[dict[str, Any]]:
     return await c.workflows.templates()
 
@@ -49,7 +49,7 @@ async def create_case(body: CreateCaseIn, response: Response, user: User = Depen
         consents[ConsentType.SERVICE_INITIATION_CONSENT] = True
     data = CreateCaseInput(
         event_type=body.event_type, event_date=body.event_date, participants=body.participants, preferences=body.preferences,
-        consents=consents, source=body.source, idempotency_key=body.idempotency_key,
+        memory={"details": body.details} if body.details else {}, consents=consents, source=body.source, idempotency_key=body.idempotency_key,
     )
     case, created = await c.cases.create_case(user, data, actor=f"user:{user.id}", actor_type=ActorType.RESIDENT)
     await c.commit()

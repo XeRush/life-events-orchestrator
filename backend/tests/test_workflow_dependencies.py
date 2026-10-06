@@ -1,10 +1,8 @@
 import pytest
 
 from app.agents.journey_planner import parallel_groups, topological_layers
-from app.core.errors import UnsupportedEventType
 from app.models.enums import CaseStatus
 from app.models.enums import TaskStatus as S
-from app.services.case_service import CreateCaseInput
 from tests.helpers import act, make_case, status_map
 
 
@@ -39,13 +37,11 @@ async def test_downstream_stays_blocked_until_prerequisites_complete(container, 
     assert st["IDENTITY_PROCESS"] == S.BLOCKED and st["HEALTH_PROCESS"] == S.BLOCKED
 
 
-async def test_unconfigured_life_events_do_not_pretend_to_run(container, resident):
-    with pytest.raises(UnsupportedEventType):
-        await container.cases.create_case(resident, CreateCaseInput(event_type="MARRIAGE"))
+async def test_every_life_event_is_configured(container, resident):
     templates = {t["code"]: t for t in await container.workflows.templates()}
-    assert templates["BIRTH"]["is_configured"] and not templates["MARRIAGE"]["is_configured"]
-    preview = await container.workflows.template_graph("MOVE")
-    assert preview["nodes"] and not preview["is_configured"]
+    assert all(t["is_configured"] for t in templates.values()) and len(templates) == 4
+    graph = await container.workflows.template_graph("MOVE")
+    assert graph["nodes"] and graph["is_configured"]
 
 
 async def test_case_without_service_consent_waits(container, resident):

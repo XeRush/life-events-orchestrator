@@ -3,7 +3,7 @@
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "ai_intro": "This is the LifeLoop assistant, an AI assistant.",
-        "consent_prompt": "Congratulations. I can coordinate the services associated with this event. With your permission, I can keep you updated as each stage is completed. Would you like me to proceed?",
+        "consent_prompt": "I can coordinate the services associated with this event. With your permission, I can keep you updated as each stage is completed. Would you like me to proceed?",
         "consent_declined": "No problem. I haven't created a case or contacted anyone. You can call again whenever you're ready.",
         "case_created": "Thank you. I've opened case {ref}. I'll start the first steps with the relevant authorities and call you when something important changes. You don't need to do anything right now.",
         "case_exists": "You already have an open case for this event: {ref}. I'll keep using it.",
@@ -25,7 +25,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     },
     "ar": {
         "ai_intro": "معك مساعد لايف لوب، مساعد يعمل بالذكاء الاصطناعي.",
-        "consent_prompt": "مبروك. أستطيع تنسيق الخدمات المرتبطة بهذا الحدث. بموافقتك، سأبقيك على اطلاع مع اكتمال كل مرحلة. هل تودّ أن أتابع؟",
+        "consent_prompt": "أستطيع تنسيق الخدمات المرتبطة بهذا الحدث. بموافقتك، سأبقيك على اطلاع مع اكتمال كل مرحلة. هل تودّ أن أتابع؟",
         "consent_declined": "لا مشكلة. لم أنشئ أي ملف ولم أتواصل مع أي جهة. يمكنك الاتصال في أي وقت.",
         "case_created": "شكراً لك. فتحت الملف رقم {ref}. سأبدأ الخطوات الأولى مع الجهات المعنية وأتصل بك عند حدوث أي تغيير مهم. لا يلزمك أي إجراء الآن.",
         "case_exists": "لديك ملف مفتوح لهذا الحدث: {ref}. سأواصل استخدامه.",

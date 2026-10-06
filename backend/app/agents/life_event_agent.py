@@ -123,7 +123,7 @@ class LifeEventAgent:
         # 2) a newly reported life event
         is_question = "?" in raw or has(text, STATUS + NEXT + ACTIONS + TIMELINE + DEFER + PROVIDE)
         detected = None if is_question else detect_life_event(raw, utcnow().date())
-        if detected and detected.event_type == "BIRTH":
+        if detected:
             child = next((p for p in detected.participants if p["role"] == "child"), {})
             state.update(
                 stage="awaiting_consent",
@@ -131,8 +131,6 @@ class LifeEventAgent:
                                "relationship": child.get("relationship", "child"), "resident_words": raw[:200]},
             )
             return AgentReply(t("consent_prompt", lang))
-        if detected:  # other event types: definitions exist, but the prototype does not run them
-            return AgentReply(f"I understand this is a {detected.event_type.replace('_', ' ').lower()} event. In this prototype only the birth journey is connected to government services, so I can't start it yet.")
 
         # 3) questions and actions about the persistent case
         if has(text, CLOSE):

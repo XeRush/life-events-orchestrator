@@ -52,4 +52,4 @@ The system **does not replace government authorities; it coordinates the journey
 
 ## Honest scope
 
-Prototype. Mock government entities and a demonstration workflow; BIRTH is fully implemented, MARRIAGE / MOVE / BUSINESS_START are definitions only. Government-authorized integrations would be required for production.
+Prototype. Mock government entities and a demonstration workflow; All four life events (birth, marriage, moving, starting a business) run end to end through mock authorities. Government-authorized integrations would be required for production.
