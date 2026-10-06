@@ -1,124 +1,258 @@
-"""Shared enumerations for the domain model."""
-from enum import Enum
+"""Shared enumerations. Values are stored as strings with CHECK constraints (portable and easy to migrate)."""
+from enum import StrEnum
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     RESIDENT = "RESIDENT"
-    OPERATOR = "OPERATOR"
-    GOVERNMENT_ENTITY = "GOVERNMENT_ENTITY"
+    OFFICER = "OFFICER"
     ADMIN = "ADMIN"
 
 
-class CaseStatus(str, Enum):
-    PENDING_CONSENT = "PENDING_CONSENT"
-    IN_PROGRESS = "IN_PROGRESS"
-    PAUSED = "PAUSED"
+class OrganizationKind(StrEnum):
+    PLATFORM = "PLATFORM"
+    SERVICE_CENTRE = "SERVICE_CENTRE"
+
+
+class AuthTokenPurpose(StrEnum):
+    EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
+    PASSWORD_RESET = "PASSWORD_RESET"
+    INVITATION = "INVITATION"
+
+
+class CaseStatus(StrEnum):
+    INTAKE = "INTAKE"
+    ACTIVE = "ACTIVE"
+    WAITING_FOR_PARENT = "WAITING_FOR_PARENT"
+    WAITING_FOR_HUMAN = "WAITING_FOR_HUMAN"
     ESCALATED = "ESCALATED"
     COMPLETED = "COMPLETED"
-    CANCELLED = "CANCELLED"
+    CLOSED = "CLOSED"
 
 
-class TaskStatus(str, Enum):
+class ChannelMode(StrEnum):
+    VOICE = "VOICE"
+    SMS_ONLY = "SMS_ONLY"
+
+
+class RiskLevel(StrEnum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class ParentRole(StrEnum):
+    FATHER = "FATHER"
+    MOTHER = "MOTHER"
+    GUARDIAN = "GUARDIAN"
+
+
+class Entity(StrEnum):
+    DHA = "DHA"
+    MOHAP = "MOHAP"
+    DOH = "DOH"
+    MOFA = "MOFA"
+    CONSULATE = "CONSULATE"
+    GDRFA = "GDRFA"
+    ICP = "ICP"
+    INSURER = "INSURER"
+
+
+class NodeType(StrEnum):
+    ENTITY_FILING = "ENTITY_FILING"
+    PARENT_REPORTED = "PARENT_REPORTED"
+
+
+class NodeState(StrEnum):
     PENDING = "PENDING"
     READY = "READY"
+    SUBMITTING = "SUBMITTING"
     SUBMITTED = "SUBMITTED"
     PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
+    CLEARED = "CLEARED"
     BLOCKED = "BLOCKED"
-    WAITING_FOR_RESIDENT = "WAITING_FOR_RESIDENT"
-    WAITING_FOR_ENTITY = "WAITING_FOR_ENTITY"
+    DOCUMENT_MISSING = "DOCUMENT_MISSING"
+    STALLED = "STALLED"
+    WAITING_FOR_PARENT = "WAITING_FOR_PARENT"
+    WAITING_FOR_HUMAN = "WAITING_FOR_HUMAN"
     REJECTED = "REJECTED"
-    FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
+    COMPLETED = "COMPLETED"
 
 
-class ActorType(str, Enum):
+DONE_STATES = frozenset({NodeState.CLEARED, NodeState.COMPLETED})
+ATTENTION_STATES = frozenset({NodeState.BLOCKED, NodeState.DOCUMENT_MISSING, NodeState.STALLED, NodeState.REJECTED})
+WITH_ENTITY_STATES = frozenset({NodeState.SUBMITTING, NodeState.SUBMITTED, NodeState.PROCESSING})
+
+
+class Source(StrEnum):
+    """Who an event or a piece of information comes from. The UI renders these distinctly."""
+
+    AI_AGENT = "AI_AGENT"
+    GOVERNMENT_MOCK = "GOVERNMENT_MOCK"
+    PARENT_REPORTED = "PARENT_REPORTED"
+    HUMAN_OFFICER = "HUMAN_OFFICER"
+    RESIDENT = "RESIDENT"
+    SYSTEM = "SYSTEM"
+
+
+class ActorType(StrEnum):
     SYSTEM = "SYSTEM"
     AI_AGENT = "AI_AGENT"
     RESIDENT = "RESIDENT"
-    GOVERNMENT_ENTITY = "GOVERNMENT_ENTITY"
+    OFFICER = "OFFICER"
     ADMIN = "ADMIN"
+    GOVERNMENT_ENTITY = "GOVERNMENT_ENTITY"
+    PROVIDER = "PROVIDER"
 
 
-class DomainEventType(str, Enum):
-    LIFE_EVENT_CREATED = "LIFE_EVENT_CREATED"
-    CONSENT_CAPTURED = "CONSENT_CAPTURED"
-    TASK_CREATED = "TASK_CREATED"
-    TASK_STARTED = "TASK_STARTED"
-    TASK_PROCESSING = "TASK_PROCESSING"
-    TASK_COMPLETED = "TASK_COMPLETED"
-    TASK_DELAYED = "TASK_DELAYED"
-    TASK_REJECTED = "TASK_REJECTED"
-    TASK_FAILED = "TASK_FAILED"
-    TASK_RESUMED = "TASK_RESUMED"
-    TASK_CANCELLED = "TASK_CANCELLED"
-    DOCUMENT_REQUIRED = "DOCUMENT_REQUIRED"
-    DOCUMENT_RECEIVED = "DOCUMENT_RECEIVED"
-    DEPENDENCY_RESOLVED = "DEPENDENCY_RESOLVED"
-    DEPENDENCY_BLOCKED = "DEPENDENCY_BLOCKED"
-    WORKFLOW_REPLANNED = "WORKFLOW_REPLANNED"
-    CALLBACK_REQUIRED = "CALLBACK_REQUIRED"
-    CALLBACK_COMPLETED = "CALLBACK_COMPLETED"
-    CASE_PAUSED = "CASE_PAUSED"
-    CASE_RESUMED = "CASE_RESUMED"
-    CASE_ESCALATED = "CASE_ESCALATED"
-    CASE_COMPLETED = "CASE_COMPLETED"
-    RESIDENT_DEFERRED = "RESIDENT_DEFERRED"
-
-
-class ConsentType(str, Enum):
-    CALLBACK_CONSENT = "CALLBACK_CONSENT"
-    SERVICE_INITIATION_CONSENT = "SERVICE_INITIATION_CONSENT"
-    DATA_PROCESSING_CONSENT = "DATA_PROCESSING_CONSENT"
-
-
-class ConsentStatus(str, Enum):
-    GRANTED = "GRANTED"
-    DECLINED = "DECLINED"
-    REVOKED = "REVOKED"
-
-
-class DocumentStatus(str, Enum):
-    REQUESTED = "REQUESTED"
-    RECEIVED = "RECEIVED"
-    ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
-
-
-class VerificationStatus(str, Enum):
-    NOT_APPLICABLE = "NOT_APPLICABLE"
+class ApprovalState(StrEnum):
     PENDING = "PENDING"
-    VERIFIED = "VERIFIED"
-    FAILED = "FAILED"
-
-
-class CallbackStatus(str, Enum):
-    SCHEDULED = "SCHEDULED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    SKIPPED = "SKIPPED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
 
 
-class ConversationChannel(str, Enum):
-    VOICE_INBOUND = "VOICE_INBOUND"
-    VOICE_OUTBOUND = "VOICE_OUTBOUND"
-    DEMO = "DEMO"
-    WEB = "WEB"
+class OfficerDecision(StrEnum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    DOCUMENTS_REQUESTED = "DOCUMENTS_REQUESTED"
+    ESCALATED = "ESCALATED"
+    TRANSFERRED = "TRANSFERRED"
+    RESOLVED = "RESOLVED"
+    NOTE = "NOTE"
 
 
-class ConversationStatus(str, Enum):
-    ACTIVE = "ACTIVE"
+class EscalationReason(StrEnum):
+    TWO_FAILED_VERIFICATIONS = "TWO_FAILED_VERIFICATIONS"
+    SLA_STALL = "SLA_STALL"
+    CONSULATE_STALL = "CONSULATE_STALL"
+    DISTRESS = "DISTRESS"
+    APPROVAL_QUESTION = "APPROVAL_QUESTION"
+    DISPUTED_RECORD = "DISPUTED_RECORD"
+    RESIDENT_REQUEST = "RESIDENT_REQUEST"
+    ENTITY_REJECTION = "ENTITY_REJECTION"
+    OFFICER_REFERRAL = "OFFICER_REFERRAL"
+
+
+class EscalationStatus(StrEnum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    RESOLVED = "RESOLVED"
+
+
+class ConsentType(StrEnum):
+    CALLBACK = "CALLBACK"
+    DATA_PROCESSING = "DATA_PROCESSING"
+    SERVICE_FILING = "SERVICE_FILING"
+
+
+class ConsentStatus(StrEnum):
+    GRANTED = "GRANTED"
+    REVOKED = "REVOKED"
+
+
+class DocumentCategory(StrEnum):
+    PARENT = "PARENT"
+    CHILD = "CHILD"
+    MARRIAGE_CERTIFICATE = "MARRIAGE_CERTIFICATE"
+    BIRTH_CERTIFICATE = "BIRTH_CERTIFICATE"
+    PASSPORT = "PASSPORT"
+    VISA = "VISA"
+    EMIRATES_ID = "EMIRATES_ID"
+    INSURANCE = "INSURANCE"
+
+
+class DocumentStatus(StrEnum):
+    REQUIRED = "REQUIRED"
+    UPLOADED = "UPLOADED"
+    VERIFIED = "VERIFIED"
+    MISSING = "MISSING"
+    EXPIRED = "EXPIRED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class CallbackStatus(StrEnum):
+    SCHEDULED = "SCHEDULED"
+    DIALING = "DIALING"
     COMPLETED = "COMPLETED"
+    NO_ANSWER = "NO_ANSWER"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    BLOCKED_NO_CONSENT = "BLOCKED_NO_CONSENT"
+    SMS_ONLY = "SMS_ONLY"
+
+
+class CallDirection(StrEnum):
+    INBOUND = "INBOUND"
+    OUTBOUND = "OUTBOUND"
+
+
+class CallProvider(StrEnum):
+    ELEVENLABS = "ELEVENLABS"
+    SIMULATED = "SIMULATED"
+
+
+class CallState(StrEnum):
+    RINGING = "RINGING"
+    ACTIVE = "ACTIVE"
+    ENDED = "ENDED"
+    TRANSFERRED = "TRANSFERRED"
     FAILED = "FAILED"
 
 
-# Task-state groupings used by summaries, dashboards and notification policy.
-TERMINAL_TASK_STATES = {TaskStatus.COMPLETED, TaskStatus.CANCELLED}
-AUTHORITY_ACTIVE_STATES = {
-    TaskStatus.SUBMITTED,
-    TaskStatus.PROCESSING,
-    TaskStatus.WAITING_FOR_ENTITY,
-}
-ACTIVE_CASE_STATES = {CaseStatus.PENDING_CONSENT, CaseStatus.IN_PROGRESS, CaseStatus.PAUSED, CaseStatus.ESCALATED}
+class TranscriptRole(StrEnum):
+    AGENT = "AGENT"
+    RESIDENT = "RESIDENT"
+    SYSTEM = "SYSTEM"
+    OFFICER = "OFFICER"
+
+
+class SubAgent(StrEnum):
+    ROUTER = "ROUTER"
+    INTAKE = "INTAKE"
+    STATUS = "STATUS"
+    EXCEPTION = "EXCEPTION"
+
+
+class NotificationChannel(StrEnum):
+    IN_APP = "IN_APP"
+    SMS = "SMS"
+    EMAIL = "EMAIL"
+    VOICE = "VOICE"
+
+
+class NotificationStatus(StrEnum):
+    QUEUED = "QUEUED"
+    SENT = "SENT"
+    FAILED = "FAILED"
+    READ = "READ"
+
+
+class VerificationMethod(StrEnum):
+    UAE_PASS = "UAE_PASS"
+    KNOWLEDGE_FACTS = "KNOWLEDGE_FACTS"
+
+
+class OutboxStatus(StrEnum):
+    PENDING = "PENDING"
+    PUBLISHED = "PUBLISHED"
+    PROCESSED = "PROCESSED"
+    FAILED = "FAILED"
+
+
+class IntegrationStatus(StrEnum):
+    RECEIVED = "RECEIVED"
+    PROCESSED = "PROCESSED"
+    DUPLICATE = "DUPLICATE"
+    REJECTED = "REJECTED"
+    FAILED = "FAILED"
+
+
+class IntegrationDirection(StrEnum):
+    INBOUND = "INBOUND"
+    OUTBOUND = "OUTBOUND"
+
+
+ACTIVE_CASE_STATES = frozenset({
+    CaseStatus.INTAKE, CaseStatus.ACTIVE, CaseStatus.WAITING_FOR_PARENT, CaseStatus.WAITING_FOR_HUMAN, CaseStatus.ESCALATED,
+})
+STAFF_ROLES = frozenset({UserRole.OFFICER, UserRole.ADMIN})

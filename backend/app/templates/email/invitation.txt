@@ -1,0 +1,15 @@
+{% if recipient_name %}Hello {{ recipient_name }},
+
+{% endif %}{{ inviter }} has provisioned a LifeLoop account for you.
+
+Role: {{ role }}
+Organisation: {{ organization }}
+
+Set your password to activate the account:
+
+{{ action_url }}
+
+This invitation expires in {{ expires_in }}.
+
+--
+LifeLoop

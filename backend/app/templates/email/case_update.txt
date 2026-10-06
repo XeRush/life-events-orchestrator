@@ -1,0 +1,12 @@
+{% if recipient_name %}Hello {{ recipient_name }},
+
+{% endif %}{{ title }}
+
+{{ message }}
+{% if action_url %}
+Open your case: {{ action_url }}
+{% endif %}
+LifeLoop only reports what the responsible authority has confirmed.
+
+--
+LifeLoop

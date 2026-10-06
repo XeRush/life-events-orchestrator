@@ -1,55 +1,90 @@
 import { create } from "zustand";
+import type { Lang } from "../types/api";
 
-export type Lang = "en" | "ar";
+export interface Toast { id: number; tone: "info" | "success" | "error"; text: string }
 
-interface UIState {
-  lang: Lang;
-  speakReplies: boolean;
-  sidebarOpen: boolean;
-  toasts: { id: number; tone: "info" | "success" | "error"; text: string }[];
-  setLang: (lang: Lang) => void;
-  setSpeakReplies: (on: boolean) => void;
-  setSidebarOpen: (open: boolean) => void;
-  toast: (tone: "info" | "success" | "error", text: string) => void;
-  dismiss: (id: number) => void;
-}
+export type ThemePref = "light" | "dark" | "system";
 
-function read(key: string, fallback: string): string {
+const LANG_KEY = "lifeloop.lang";
+const THEME_KEY = "lifeloop.theme";
+const SPEAK_KEY = "lifeloop.speak";
+const LANGS: Lang[] = ["en", "ar", "hi", "ur", "ml", "tl"];
+
+function initialLang(): Lang {
   try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-function write(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
+    const saved = localStorage.getItem(LANG_KEY) as Lang | null;
+    if (saved && LANGS.includes(saved)) return saved;
   } catch {
     /* ignore */
   }
+  const nav = (navigator.language || "en").slice(0, 2) as Lang;
+  return LANGS.includes(nav) ? nav : "en";
 }
 
-let toastId = 0;
+function initialTheme(): ThemePref {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark" || saved === "system") return saved;
+  } catch {
+    /* ignore */
+  }
+  return "light";
+}
 
-/** Local UI state only (language, drawers, toasts). */
-export const useUI = create<UIState>((set, get) => ({
-  lang: read("lifeloop.lang", "en") as Lang,
-  speakReplies: read("lifeloop.speak", "0") === "1",
-  sidebarOpen: false,
+interface UIState {
+  lang: Lang;
+  theme: ThemePref;
+  setTheme: (theme: ThemePref) => void;
+  speakReplies: boolean;
+  toasts: Toast[];
+  setLang: (lang: Lang) => void;
+  setSpeak: (on: boolean) => void;
+  toast: (tone: Toast["tone"], text: string) => void;
+  dismiss: (id: number) => void;
+}
+
+let next = 1;
+
+/** Local UI state only: language, theme, speech preference, toasts. */
+export const useUI = create<UIState>((set) => ({
+  lang: initialLang(),
+  theme: initialTheme(),
+  setTheme: (theme) => {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* ignore */
+    }
+    set({ theme });
+  },
+  speakReplies: (() => {
+    try {
+      return localStorage.getItem(SPEAK_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  })(),
   toasts: [],
   setLang: (lang) => {
-    write("lifeloop.lang", lang);
+    try {
+      localStorage.setItem(LANG_KEY, lang);
+    } catch {
+      /* ignore */
+    }
     set({ lang });
   },
-  setSpeakReplies: (on) => {
-    write("lifeloop.speak", on ? "1" : "0");
+  setSpeak: (on) => {
+    try {
+      localStorage.setItem(SPEAK_KEY, on ? "on" : "off");
+    } catch {
+      /* ignore */
+    }
     set({ speakReplies: on });
   },
-  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toast: (tone, text) => {
-    const id = ++toastId;
-    set({ toasts: [...get().toasts, { id, tone, text }] });
-    setTimeout(() => get().dismiss(id), 5200);
+    const id = next++;
+    set((s) => ({ toasts: [...s.toasts, { id, tone, text }] }));
+    window.setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 5000);
   },
-  dismiss: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
+  dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

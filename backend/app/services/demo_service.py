@@ -1,23 +1,38 @@
-"""Demo control center + entity simulator.
+"""Demo control panel (DEMO_MODE only, officer/admin only).
 
-Every action here goes through the same adapters and the same `ingest_entity_event` path a real authority
-webhook would use - nothing is faked in the UI or short-circuited around the domain events.
+Every control drives the REAL pipeline: a mock authority changes state and LifeLoop learns it through the normal
+`get_status` contract -> EntityStatusReceived -> consumer -> validated transition -> orchestrator -> callback. Officer
+release goes through ApprovalService with the signed-in officer as the actor. Nothing is faked in the frontend.
 """
 from __future__ import annotations
 
+import contextlib
+import json
 from typing import TYPE_CHECKING, Any
 
-from app.core.errors import Conflict, NotFound, ValidationFailed
-from app.integrations.government.base import AdapterError, ApplicationNotFound, EntityConflict
-from app.models.enums import ActorType
-from app.models.enums import TaskStatus as S
-from app.models.life_event_case import LifeEventCase
-from app.models.service_task import ServiceTask
-from app.services.orchestration_service import IngestResult
+from sqlalchemy import delete
+
+from app.core.clock import utcnow
+from app.core.errors import Conflict, ValidationFailed
+from app.core.security import sign_payload
+from app.events.recorder import Actor
+from app.models.call import CallSession
+from app.models.case import Case
+from app.models.enums import (
+    CallDirection,
+    CallProvider,
+    CallState,
+    EscalationReason,
+    NodeState,
+    NodeType,
+    UserRole,
+)
+from app.models.user import User
 
 if TYPE_CHECKING:
     from app.services.container import ServiceContainer
 
+<<<<<<< HEAD
 IDENTITY = ("IDENTITY_PROCESS", "IDENTITY_MANUAL_REVIEW")
 
 # action -> (label, description, task keys, adapter operation, params)
@@ -45,88 +60,143 @@ DEMO_ACTIONS: dict[str, dict[str, Any]] = {
     "complete_tax_registration": {"label": "Complete Tax Registration", "keys": ("TAX_REGISTRATION",), "op": "complete", "entity": "Tax Authority"},
     "trigger_callback": {"label": "Trigger Callback", "special": "trigger_callback", "entity": "LIFELOOP"},
     "replan_workflow": {"label": "Replan Workflow", "special": "replan_workflow", "entity": "LIFELOOP"},
+=======
+CONTROLS: dict[str, list[str]] = {
+    "BIRTH_CERTIFICATE": ["RELEASE", "PROCESSING", "CLEARED", "BLOCKED", "DOCUMENT_MISSING"],
+    "MOFA_ATTESTATION": ["RELEASE", "PROCESSING", "CLEARED", "STALLED"],
+    "CONSULATE_PASSPORT": ["APPOINTMENT_BOOKED", "APPLICATION_SUBMITTED", "PASSPORT_ISSUED", "DELAYED"],
+    "RESIDENCE_VISA": ["RELEASE", "PROCESSING", "CLEARED", "DOCUMENT_MISSING", "BLOCKED", "STALLED", "REJECTED"],
+    "EMIRATES_ID": ["READY", "RELEASE", "WAITING_FOR_PARENT", "COMPLETED"],
+    "INSURANCE": ["READY", "RELEASE", "COMPLETED"],
+>>>>>>> 53aa27f32330dcaf00d6b8a3af2519d809231184
 }
+ENTITY_OUTCOMES = {"PROCESSING", "CLEARED", "COMPLETED", "BLOCKED", "DOCUMENT_MISSING", "STALLED", "REJECTED", "WAITING_FOR_PARENT"}
+MILESTONES = {"APPOINTMENT_BOOKED", "APPLICATION_SUBMITTED", "PASSPORT_ISSUED", "DELAYED"}
 
 
 class DemoService:
     def __init__(self, c: ServiceContainer) -> None:
         self.c = c
 
-    def catalog(self) -> list[dict[str, str]]:
-        return [{"action": k, "label": v["label"], "actor": v["entity"]} for k, v in DEMO_ACTIONS.items()]
+    def status(self) -> dict[str, Any]:
+        infra = self.c.infra
+        return {"demo_mode": self.c.settings.demo_mode, "controls": CONTROLS,
+                "failures": {"government": infra.adapters.failures, "kafka": infra.broker.simulate_failure,
+                             "elevenlabs": infra.voice_down},
+                "label": "DEMO CONTROLS - simulate authority responses through the same contracts a real integration would use"}
 
-    # ---- entity simulation (shared with the mock-entity HTTP API) -------------------------------
-    async def simulate(self, task: ServiceTask, op: str, **params: Any) -> IngestResult:
-        """Make the responsible mock authority perform `op`, then deliver its webhook to the orchestrator."""
-        entity = await self.c.orchestration.entity_of(task)
-        if not entity or not task.external_ref:
-            raise Conflict(f"{task.name} has not been submitted to an authority yet - it is waiting for earlier services.", code="not_submitted")
-        adapter = self.c.adapters.get(entity.code)
-        try:
-            app = await adapter._get(self.c.session, task.external_ref)  # noqa: SLF001 - simulator owns the mock store
-            if op == "acknowledge":
-                hook = await adapter.acknowledge(self.c.session, app)
-            elif op == "complete":
-                hook = await adapter.complete(self.c.session, app)
-            elif op == "delay":
-                hook = await adapter.delay(self.c.session, app, int(params.get("hours", 24)), params.get("reason", "Queue backlog"))
-            elif op == "reject":
-                hook = await adapter.reject(self.c.session, app, params.get("reason", "Rejected by authority"),
-                                            bool(params.get("retryable", False)), params.get("reason_code", "REJECTED"))
-            elif op == "require_documents":
-                hook = await adapter.require_documents(self.c.session, app, params.get("documents"))
-            else:
-                raise ValidationFailed(f"Unknown simulation operation '{op}'")
-        except ApplicationNotFound as exc:
-            raise NotFound(str(exc)) from exc
-        except EntityConflict as exc:
-            raise Conflict(str(exc)) from exc
-        except AdapterError as exc:
-            raise Conflict(str(exc)) from exc
-        return await self.c.orchestration.ingest_entity_event(hook)
+    async def act(self, case: Case, node_key: str, action: str, user: User) -> dict[str, Any]:
+        action = action.upper()
+        if action not in CONTROLS.get(node_key, []) and action not in ("ADVANCE", "BLOCK", "STALL", "CLEAR"):
+            raise ValidationFailed(f"{action} is not a demo control for {node_key}")
+        node = await self.c.entities.node_by_key(case, node_key)
+        action = self._resolve_generic(node, action)
+        if action in MILESTONES:
+            if node.type != NodeType.PARENT_REPORTED:
+                raise ValidationFailed("Milestones apply to the consulate node only.")
+            await self.c.consulate.report(case, action, actor=Actor(Actor.user(user).type, f"{user.full_name} (demo control, as the parent)", user.id),
+                                          channel="DEMO", passport_number_present=action == "PASSPORT_ISSUED")
+            return {"node": node_key, "action": action, "via": "ConsulateService (parent-reported)"}
+        if action == "RELEASE":
+            approval = await self.c.approvals_repo.pending_for_node(node.id)
+            if approval is None:
+                raise Conflict(f"{node.title} is not awaiting officer release (state {node.state.value}).")
+            await self.c.approvals.approve(approval.id, user, note="Released from the demo control panel")
+            return {"node": node_key, "action": action, "via": "ApprovalService (officer gate)"}
+        if action == "READY":
+            if node.state == NodeState.PENDING:
+                raise Conflict(f"{node.title} unlocks automatically when its dependency clears.")
+            await self.c.approvals.request(case, node)
+            return {"node": node_key, "action": action, "via": "ApprovalService.request"}
+        if action in ENTITY_OUTCOMES:
+            missing = ["CHILD_PHOTO"] if node_key == "RESIDENCE_VISA" and action == "DOCUMENT_MISSING" else None
+            if node_key == "BIRTH_CERTIFICATE" and action == "DOCUMENT_MISSING":
+                missing = ["HOSPITAL_BIRTH_NOTIFICATION"]
+            status = await self.c.entities.simulate(case, node, action, missing=missing)
+            return {"node": node_key, "action": action, "via": "mock adapter -> get_status contract", "authority_status": status}
+        raise ValidationFailed("Unsupported demo action")
 
-    async def _active_task(self, case: LifeEventCase, keys: tuple[str, ...]) -> ServiceTask:
-        tasks = [t for t in await self.c.cases.tasks(case.id) if t.key in keys and t.status != S.CANCELLED]
-        if not tasks:
-            raise NotFound(f"This case has no active service among {', '.join(keys)}")
-        return tasks[-1]
+    def _resolve_generic(self, node, action: str) -> str:
+        if action == "BLOCK":
+            return "BLOCKED"
+        if action == "STALL":
+            return "STALLED"
+        if action == "CLEAR":
+            return "PASSPORT_ISSUED" if node.type == NodeType.PARENT_REPORTED else ("COMPLETED" if node.success_state == NodeState.COMPLETED else "CLEARED")
+        if action == "ADVANCE":
+            if node.type == NodeType.PARENT_REPORTED:
+                last = (node.parent_report or {}).get("reported_status")
+                return {"APPOINTMENT_BOOKED": "APPLICATION_SUBMITTED", "APPLICATION_SUBMITTED": "PASSPORT_ISSUED"}.get(last or "", "APPOINTMENT_BOOKED")
+            return {NodeState.WAITING_FOR_HUMAN: "RELEASE", NodeState.SUBMITTED: "PROCESSING",
+                    NodeState.PROCESSING: "COMPLETED" if node.success_state == NodeState.COMPLETED else "CLEARED",
+                    NodeState.READY: "READY"}.get(node.state, "PROCESSING")
+        return action
 
-    async def perform(self, case: LifeEventCase, action: str) -> dict[str, Any]:
-        spec = DEMO_ACTIONS.get(action)
-        if not spec:
-            raise NotFound(f"Unknown demo action '{action}'")
-        special = spec.get("special")
-        if special == "submit_document":
-            return await self._submit_document(case)
-        if special == "trigger_callback":
-            return await self._trigger_callback(case)
-        if special == "replan_workflow":
-            result = await self.c.replanning.replan_case(case, actor="demo-operator", actor_type=ActorType.ADMIN)
-            return {"action": action, "result": result}
-        task = await self._active_task(case, spec["keys"])
-        result = await self.simulate(task, spec["op"], **spec.get("params", {}))
-        return {"action": action, "task": task.key, "applied": result.applied, "duplicate": result.duplicate, "message": result.message or "Applied"}
+    async def trigger_callback(self, case: Case, user: User) -> dict[str, Any]:
+        cb = await self.c.callbacks.trigger_now(case, user)
+        return {"callback": self.c.callbacks.view(cb, case.reference) if cb else None}
 
-    async def _submit_document(self, case: LifeEventCase) -> dict[str, Any]:
-        waiting = [t for t in await self.c.cases.tasks(case.id) if t.status == S.WAITING_FOR_RESIDENT]
-        submitted = []
-        for task in waiting:
-            for doc in await self.c.documents.outstanding(task.id):
-                await self.c.documents.record(
-                    case, doc_type=doc.doc_type, name=doc.name, task_id=task.id, source="demo-operator",
-                    actor="demo-operator", actor_type=ActorType.ADMIN, content=b"demo document placeholder", content_type="text/plain",
-                )
-                submitted.append(doc.name)
-        if not submitted:
-            raise Conflict("No document is currently requested. Use 'Require Document' first.", code="no_document_requested")
-        return {"action": "submit_document", "documents": submitted}
+    async def trigger_escalation(self, case: Case, user: User, reason: str) -> dict[str, Any]:
+        esc = await self.c.escalations.open(case, EscalationReason(reason), actor=Actor.user(user), summary="Triggered from the demo control panel.")
+        return {"escalation_id": str(esc.id)}
 
-    async def _trigger_callback(self, case: LifeEventCase) -> dict[str, Any]:
-        snapshot = await self.c.cases.snapshot(case)
-        cb = await self.c.callbacks.schedule_for_resident(
-            case, reason="Status update requested from the demo console",
-            updates=[{"kind": "status", "text": snapshot["summary"], "event_id": "demo", "event_type": "DEMO", "task_key": None}],
-        )
-        await self.c.callbacks.execute(cb)
-        return {"action": "trigger_callback", "callback_id": str(cb.id), "status": cb.status.value, "duration_seconds": cb.duration_seconds}
+    async def simulate_webhook(self, case: Case) -> dict[str, Any]:
+        """Send an ElevenLabs-format post-call webhook through the real verification path."""
+        call = CallSession(case_id=case.id, user_id=case.resident_id, direction=CallDirection.INBOUND, provider=CallProvider.ELEVENLABS,
+                           provider_conversation_id=f"conv_demo_{int(utcnow().timestamp())}", language=case.language, state=CallState.ACTIVE,
+                           started_at=utcnow(), verified=True, disclosure_at=utcnow())
+        self.c.session.add(call)
+        await self.c.session.flush()
+        from app.core.i18n import t
 
+        body = json.dumps({"type": "post_call_transcription", "event_timestamp": int(utcnow().timestamp()), "data": {
+            "agent_id": self.c.settings.elevenlabs_agent_id or "agent_demo", "conversation_id": call.provider_conversation_id,
+            "conversation_initiation_client_data": {"dynamic_variables": {"lifeloop_call_id": str(call.id), "case_reference": case.reference}},
+            "transcript": [{"role": "agent", "message": t("disclosure", case.language)},
+                           {"role": "user", "message": "Where are we with the visa?"},
+                           {"role": "agent", "message": t("no_confirmed_update", case.language)}],
+            "metadata": {"call_duration_secs": 42},
+            "analysis": {"transcript_summary": "Parent asked about the visa; agent said it is not cleared yet.",
+                         "data_collection_results": {"disclosure_delivered": {"value": True}, "language": {"value": case.language}}}}}).encode()
+        secret = self.c.settings.elevenlabs_webhook_secret
+        signature = sign_payload(secret, body) if secret else None
+        result = await self.c.webhooks.elevenlabs(body, signature)
+        return {"webhook": result, "signed": bool(secret)}
+
+    async def set_failure(self, component: str, enabled: bool, entity: str | None = None, mode: str = "unavailable") -> dict[str, Any]:
+        infra = self.c.infra
+        if component == "government":
+            infra.adapters.set_failure(entity or "*", mode if enabled else None)
+        elif component == "kafka":
+            infra.broker.simulate_failure = enabled
+            if not enabled:
+                infra.broker.wakeup.set()
+        elif component == "elevenlabs":
+            if infra.elevenlabs is not None:
+                infra.elevenlabs.simulate_unavailable = enabled
+            infra.voice_down = enabled
+        else:
+            raise ValidationFailed("component must be government, kafka or elevenlabs")
+        await self.c.events.audit("DemoFailureToggled", actor=Actor.system("Demo control panel"), details={"component": component, "enabled": enabled,
+                                                                                                         "entity": entity, "mode": mode})
+        return self.status()
+
+    async def reset(self, user: User) -> dict[str, Any]:
+        if user.role != UserRole.ADMIN and user.role != UserRole.OFFICER:
+            raise ValidationFailed("Officers or admins only")
+        from app.seed.seed import DEMO_CASE_REFERENCE, build_primary_demo_case
+
+        # The rebuild replays the real pipeline on a backdated clock and drives its own events; the live workers are held
+        # meanwhile, or they would pick up those events on the real clock and race the replay.
+        runner = self.c.infra.workers
+        async with runner.paused() if runner is not None else contextlib.nullcontext():
+            case = await self.c.cases_repo.by_reference(DEMO_CASE_REFERENCE)
+            if case is not None:
+                await self.c.infra.neo4j.delete_case(str(case.id))
+                await self.c.session.execute(delete(Case).where(Case.id == case.id))
+            for comp in ("government", "kafka", "elevenlabs"):
+                await self.set_failure(comp, False)
+            await self.c.events.audit("DemoReset", actor=Actor.user(user))
+            await self.c.commit()
+            await build_primary_demo_case(self.c.infra)
+        return {"reset": True, "case": DEMO_CASE_REFERENCE}

@@ -1,25 +1,12 @@
 from fastapi import APIRouter
 
-from app.api.v1 import (
-    auth,
-    callbacks,
-    cases,
-    consent,
-    dashboard,
-    demo,
-    documents,
-    events,
-    health,
-    mock_entities,
-    tasks,
-    timeline,
-    voice,
-)
+from app.api.v1 import agent, auth, cases, demo, entities, health, misc, officer, users
 
 api_router = APIRouter(prefix="/api/v1")
-for module in (health, auth, cases, consent, tasks, timeline, events, callbacks, documents, voice, dashboard, demo):
+for module in (health, auth, users, cases, entities, agent, officer, demo, misc):
     api_router.include_router(module.router)
-api_router.include_router(mock_entities.ops_router)
+api_router.include_router(cases.stream_router)
 
-# Mock authority APIs live outside /api/v1: they stand in for systems LIFELOOP does not own.
-mock_router = mock_entities.router
+# Liveness / readiness / metrics are also served at the root for orchestrators and Prometheus.
+root_router = APIRouter()
+root_router.include_router(health.router)

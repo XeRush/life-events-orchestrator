@@ -1,0 +1,65 @@
+{
+  "breakpoints": {
+    "390": {
+      "name": "staff-cases-stats",
+      "viewportWidth": 358,
+      "width": 358,
+      "height": 284,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          284,
+          8
+        ]
+      ]
+    },
+    "768": {
+      "name": "staff-cases-stats",
+      "viewportWidth": 720,
+      "width": 720,
+      "height": 184,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          184,
+          8
+        ]
+      ]
+    },
+    "1024": {
+      "name": "staff-cases-stats",
+      "viewportWidth": 696,
+      "width": 696,
+      "height": 184,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          184,
+          8
+        ]
+      ]
+    },
+    "1440": {
+      "name": "staff-cases-stats",
+      "viewportWidth": 1112,
+      "width": 1112,
+      "height": 86,
+      "bones": [
+        [
+          0,
+          0,
+          100,
+          86,
+          8
+        ]
+      ]
+    }
+  },
+  "_hash": "f5dc98a7210c60aa0de119d92576565d"
+}

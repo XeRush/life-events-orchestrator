@@ -1,20 +1,22 @@
-"""Overridable clock so seed data and tests can produce realistic historical timestamps."""
+"""Overridable clock. The override is a ContextVar, so seeding a backdated demo history inside one task never
+changes the time seen by concurrent requests or background workers."""
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 
-_override: Callable[[], datetime] | None = None
+_override: ContextVar[Callable[[], datetime] | None] = ContextVar("clock_override", default=None)
 
 
 def utcnow() -> datetime:
-    return _override() if _override else datetime.now(UTC)
+    fn = _override.get()
+    return fn() if fn else datetime.now(UTC)
 
 
 @contextmanager
 def use_clock(fn: Callable[[], datetime]) -> Iterator[None]:
-    global _override
-    previous, _override = _override, fn
+    token = _override.set(fn)
     try:
         yield
     finally:
-        _override = previous
+        _override.reset(token)

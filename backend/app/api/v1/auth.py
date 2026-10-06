@@ -1,86 +1,127 @@
-from datetime import timedelta
+"""Authentication: register, login, refresh, logout, me, email verification, password reset, invitations."""
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from typing import Any
 
-from app.api.deps import bearer, get_container, get_current_user, limit
-from app.core.errors import Conflict, Unauthorized
-from app.core.security import create_token, decode_token, hash_password, verify_password
-from app.models.enums import UserRole
-from app.models.user import RevokedToken, User
-from app.schemas.auth import LoginIn, LogoutIn, RefreshIn, RegisterIn, TokenOut, UserOut, UserUpdate
+from fastapi import APIRouter, Depends, Response, status
+
+from app.api.deps import current_session, get_container, get_current_user, rate_limit
+from app.api.v1.common import user_out
+from app.models.user import User
+from app.schemas.auth import (
+    AcceptInviteIn,
+    ChangePasswordIn,
+    EmailIn,
+    LoginIn,
+    LogoutIn,
+    ProfileIn,
+    RefreshIn,
+    RegisterIn,
+    ResetPasswordIn,
+    TokenIn,
+)
 from app.services.container import ServiceContainer
 
-router = APIRouter(prefix="/auth", tags=["auth"], dependencies=[Depends(limit("auth"))])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def issue_tokens(c: ServiceContainer, user: User) -> TokenOut:
+@router.get("/config", summary="Public auth configuration (verification policy, email transport, demo accounts)")
+async def auth_config(c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
     s = c.settings
-    access, _, _ = create_token(s, subject=str(user.id), token_type="access", role=user.role.value, ttl=timedelta(minutes=s.access_token_minutes))
-    refresh, _, _ = create_token(s, subject=str(user.id), token_type="refresh", role=user.role.value, ttl=timedelta(days=s.refresh_token_days))
-    return TokenOut(access_token=access, refresh_token=refresh, expires_in=s.access_token_minutes * 60)
+    return {
+        "require_email_verification": s.require_email_verification,
+        "email_transport": c.infra.email.name,
+        "dev_mailbox": s.is_development and c.infra.email.name == "console",
+        "demo_accounts": [{"email": "demo.resident@lifeloop.local", "role": "RESIDENT"}, {"email": "demo.officer@lifeloop.local", "role": "OFFICER"},
+                          {"email": "demo.admin@lifeloop.local", "role": "ADMIN"}] if s.demo_mode else [],
+        "password_rules": "At least 10 characters, with a letter and a number.",
+    }
 
 
-@router.post("/register", response_model=TokenOut, status_code=201, summary="Register a resident account")
-async def register(body: RegisterIn, c: ServiceContainer = Depends(get_container)) -> TokenOut:
-    if await c.session.scalar(select(User.id).where(User.email == body.email)):
-        raise Conflict("An account with this email already exists", code="email_taken")
-    user = User(
-        email=body.email, hashed_password=hash_password(body.password, c.settings.bcrypt_rounds), full_name=body.full_name,
-        phone=body.phone, preferred_language=body.preferred_language, role=UserRole.RESIDENT,
-    )
-    c.session.add(user)
-    await c.session.flush()
+@router.post("/register", status_code=201, dependencies=[Depends(rate_limit("auth"))], summary="Register a resident account")
+async def register(body: RegisterIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user = await c.auth.register(email=body.email, password=body.password, full_name=body.full_name, phone=body.phone,
+                                 language=body.preferred_language)
+    _, tokens = user, c.auth.issue_tokens(user)
     await c.commit()
-    return issue_tokens(c, user)
+    return {"user": await user_out(c, user), "tokens": tokens, "verification_email_sent": True}
 
 
-@router.post("/login", response_model=TokenOut, summary="Exchange email + password for JWT tokens")
-async def login(body: LoginIn, c: ServiceContainer = Depends(get_container)) -> TokenOut:
-    user = await c.session.scalar(select(User).where(User.email == body.email.strip().lower()))
-    if not user or not user.is_active or not verify_password(body.password, user.hashed_password):
-        raise Unauthorized("Incorrect email or password")
-    return issue_tokens(c, user)
-
-
-@router.post("/refresh", response_model=TokenOut, summary="Rotate a refresh token")
-async def refresh(body: RefreshIn, c: ServiceContainer = Depends(get_container)) -> TokenOut:
-    payload = decode_token(c.settings, body.refresh_token, "refresh")
-    if await c.session.scalar(select(RevokedToken.id).where(RevokedToken.jti == payload["jti"])):
-        raise Unauthorized("Refresh token has been revoked")
-    import uuid
-    from datetime import UTC, datetime
-
-    user = await c.session.get(User, uuid.UUID(payload["sub"]))
-    if not user or not user.is_active:
-        raise Unauthorized("User not found or inactive")
-    c.session.add(RevokedToken(jti=payload["jti"], user_id=user.id, expires_at=datetime.fromtimestamp(payload["exp"], UTC)))
+@router.post("/login", dependencies=[Depends(rate_limit("auth"))], summary="Sign in (lockout after repeated failures)")
+async def login(body: LoginIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user, tokens = await c.auth.login(body.email, body.password)
     await c.commit()
-    return issue_tokens(c, user)
+    return {"user": await user_out(c, user), "tokens": tokens}
 
 
-@router.post("/logout", status_code=204, summary="Revoke the current access token (and optionally a refresh token)")
-async def logout(body: LogoutIn, credentials=Depends(bearer), user: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> None:
-    from datetime import UTC, datetime
-
-    tokens = [(credentials.credentials, "access")]
-    if body.refresh_token:
-        tokens.append((body.refresh_token, "refresh"))
-    for token, kind in tokens:
-        payload = decode_token(c.settings, token, kind)
-        if not await c.session.scalar(select(RevokedToken.id).where(RevokedToken.jti == payload["jti"])):
-            c.session.add(RevokedToken(jti=payload["jti"], user_id=user.id, expires_at=datetime.fromtimestamp(payload["exp"], UTC)))
+@router.post("/refresh", dependencies=[Depends(rate_limit("auth"))], summary="Rotate the refresh token")
+async def refresh(body: RefreshIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user, tokens = await c.auth.refresh(body.refresh_token)
     await c.commit()
+    return {"user": await user_out(c, user), "tokens": tokens}
 
 
-@router.get("/me", response_model=UserOut, summary="Current user")
-async def me(user: User = Depends(get_current_user)) -> User:
-    return user
-
-
-@router.patch("/me", response_model=UserOut, summary="Update profile (language, phone for real callbacks)")
-async def update_me(body: UserUpdate, user: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> User:
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(user, field, value)
+@router.post("/logout", status_code=204, summary="Revoke the access and refresh tokens")
+async def logout(body: LogoutIn, session: tuple = Depends(current_session), c: ServiceContainer = Depends(get_container)) -> Response:
+    await c.auth.logout(session[1], body.refresh_token)
     await c.commit()
-    return user
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/me", summary="Current user")
+async def me(user: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    return await user_out(c, user)
+
+
+@router.patch("/me", summary="Update profile (name, phone, language)")
+async def update_me(body: ProfileIn, user: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user = await c.session.merge(user)
+    await c.users.update_profile(user, full_name=body.full_name, phone=body.phone, language=body.preferred_language)
+    await c.commit()
+    return await user_out(c, user)
+
+
+@router.post("/verify-email", summary="Confirm an email address with the emailed token")
+async def verify_email(body: TokenIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user = await c.auth.verify_email(body.token)
+    await c.commit()
+    return {"verified": True, "email": user.email}
+
+
+@router.post("/resend-verification", dependencies=[Depends(rate_limit("auth"))], summary="Send a new verification email")
+async def resend(user: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    await c.auth.send_verification(await c.session.merge(user))
+    await c.commit()
+    return {"sent": not user.email_verified}
+
+
+@router.post("/forgot-password", status_code=202, dependencies=[Depends(rate_limit("auth"))],
+             summary="Request a password reset (always 202: no account enumeration)")
+async def forgot(body: EmailIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    await c.auth.forgot_password(body.email)
+    await c.commit()
+    return {"accepted": True}
+
+
+@router.post("/reset-password", dependencies=[Depends(rate_limit("auth"))], summary="Set a new password with the emailed token")
+async def reset(body: ResetPasswordIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user = await c.auth.reset_password(body.token, body.password)
+    await c.commit()
+    return {"reset": True, "email": user.email}
+
+
+@router.post("/accept-invite", dependencies=[Depends(rate_limit("auth"))], summary="Activate a provisioned account")
+async def accept_invite(body: AcceptInviteIn, c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user = await c.auth.accept_invitation(body.token, body.password, body.full_name)
+    tokens = c.auth.issue_tokens(user)
+    await c.commit()
+    return {"user": await user_out(c, user), "tokens": tokens}
+
+
+@router.post("/change-password", summary="Change password (ends other sessions)")
+async def change_password(body: ChangePasswordIn, user: User = Depends(get_current_user), c: ServiceContainer = Depends(get_container)) -> dict[str, Any]:
+    user = await c.session.merge(user)
+    await c.auth.change_password(user, body.current_password, body.new_password)
+    tokens = c.auth.issue_tokens(user)
+    await c.commit()
+    return {"changed": True, "tokens": tokens}
